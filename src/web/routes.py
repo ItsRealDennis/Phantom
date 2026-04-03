@@ -212,3 +212,22 @@ def alpaca_cancel_all():
         return {"status": "all_canceled"}
     except Exception as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
+
+
+@router.post("/api/trades/expire-all")
+def expire_all_open():
+    """Force-expire all open trades. Use to reset for a fresh start."""
+    from src.tracking.trade_logger import get_open_trades, settle_trade
+    trades = get_open_trades()
+    count = 0
+    for t in trades:
+        settle_trade(t["id"], "expired", 0.0, notes="Manual reset")
+        count += 1
+    # Also cancel Alpaca orders
+    client = get_client()
+    if client:
+        try:
+            client.cancel_orders()
+        except Exception:
+            pass
+    return {"status": "expired", "count": count}
