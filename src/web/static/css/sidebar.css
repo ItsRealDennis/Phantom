@@ -185,13 +185,15 @@
 
 /* ---- Main content area ---- */
 .main-content {
+    flex: 1;
     margin-left: var(--sidebar-width);
     padding-top: var(--topbar-height);
     min-height: 100vh;
+    min-width: 0;
     transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .page-container {
-    max-width: 100%;
+    width: 100%;
     padding: 28px 40px 64px;
 }
 
