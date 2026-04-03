@@ -377,14 +377,12 @@ def get_daily_pnl(date: str | None = None) -> float:
 
 
 def get_bankroll() -> float:
-    """Current bankroll — Alpaca equity if connected, else starting + realized P&L."""
-    from src.execution.alpaca_client import is_alpaca_enabled, get_account_info
+    """Current bankroll — STARTING_BANKROLL + realized P&L.
 
-    if is_alpaca_enabled():
-        account = get_account_info()
-        if account:
-            return account["equity"]
-
+    Always uses the configured starting bankroll, NOT Alpaca account equity.
+    Alpaca paper accounts default to $100K which would distort position sizing
+    and risk calculations relative to our $10K paper bankroll.
+    """
     from src.config import STARTING_BANKROLL
     conn = get_connection()
     row = conn.execute(

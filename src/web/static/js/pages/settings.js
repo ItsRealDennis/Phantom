@@ -125,7 +125,7 @@ async function renderSettings(container) {
     const configEl = document.getElementById('configGrid');
     const configs = [
         { key: 'Min Confidence', value: '55%' },
-        { key: 'Min R:R Ratio', value: '1.5' },
+        { key: 'Min R:R Ratio', value: '2.0' },
         { key: 'Max Position %', value: '1.5%' },
         { key: 'Max Open Positions', value: '5' },
         { key: 'Max Sector Exposure', value: '30%' },
@@ -135,7 +135,7 @@ async function renderSettings(container) {
         { key: 'Strategies', value: 'MR, BO, MOM' },
         { key: 'Timeframes', value: '5m-1d' },
         { key: 'AI Model', value: 'Claude Sonnet 4' },
-        { key: 'Trade Expiry', value: '5 days' },
+        { key: 'Trade Expiry', value: '1 day (strategy-specific)' },
     ];
     configs.forEach(c => {
         const item = el('div', { className: 'config-item' });
