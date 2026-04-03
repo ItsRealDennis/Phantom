@@ -3,6 +3,10 @@
 from src.config import FILTERS
 
 
+# Max % of bankroll for a single position's total value (not just risk)
+MAX_POSITION_VALUE_PCT = 0.10  # 10% of bankroll per position
+
+
 def kelly_criterion(confidence: float, rr_ratio: float) -> float:
     """
     Calculate Kelly percentage.
@@ -22,8 +26,6 @@ def kelly_criterion(confidence: float, rr_ratio: float) -> float:
         return 0.0
 
     kelly = (p * b - q) / b
-
-    # Kelly can be negative (no edge) — clamp to 0
     return max(kelly, 0.0)
 
 
@@ -36,25 +38,19 @@ def size_position(
 ) -> dict:
     """
     Calculate position size using Bloom-Walters Kelly.
-
-    Returns dict with kelly_pct, shrunk_kelly, dollar_risk, shares, position_value.
+    Caps both risk AND total position value to prevent oversized orders.
     """
     raw_kelly = kelly_criterion(confidence, rr_ratio)
     edge_shrinkage = FILTERS["edge_shrinkage"]
     max_risk_pct = FILTERS["max_position_pct"]
 
-    # Apply edge shrinkage (assume 50% overconfident)
     shrunk_kelly = raw_kelly * edge_shrinkage
-
-    # Cap at max position percentage
     final_pct = min(shrunk_kelly, max_risk_pct)
 
-    # Dollar amount at risk
     dollar_risk = bankroll * final_pct
 
-    # Risk per share (distance to stop)
     risk_per_share = abs(entry_price - stop_loss)
-    if risk_per_share == 0:
+    if risk_per_share == 0 or entry_price == 0:
         return {
             "kelly_pct": raw_kelly * 100,
             "shrunk_kelly_pct": shrunk_kelly * 100,
@@ -64,14 +60,25 @@ def size_position(
             "position_value": 0.0,
         }
 
-    shares = int(dollar_risk / risk_per_share)
+    # Shares from risk budget
+    shares_from_risk = int(dollar_risk / risk_per_share)
+
+    # Shares from position value cap (10% of bankroll)
+    max_position_value = bankroll * MAX_POSITION_VALUE_PCT
+    shares_from_value = int(max_position_value / entry_price)
+
+    # Take the smaller of the two
+    shares = min(shares_from_risk, shares_from_value)
+    shares = max(shares, 1)  # At least 1 share
+
     position_value = shares * entry_price
+    actual_risk = shares * risk_per_share
 
     return {
         "kelly_pct": round(raw_kelly * 100, 2),
         "shrunk_kelly_pct": round(shrunk_kelly * 100, 2),
         "final_risk_pct": round(final_pct * 100, 2),
-        "dollar_risk": round(dollar_risk, 2),
+        "dollar_risk": round(actual_risk, 2),
         "shares": shares,
         "position_value": round(position_value, 2),
     }

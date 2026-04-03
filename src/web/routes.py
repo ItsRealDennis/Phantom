@@ -22,7 +22,7 @@ from src.risk.portfolio_risk import get_portfolio_summary
 from src.automation.scheduler import get_scheduler_status
 from src.automation.scanner import run_scan_cycle
 from src.execution.order_sync import sync_all_open_trades
-from src.execution.alpaca_client import is_alpaca_enabled, get_account_info, get_positions
+from src.execution.alpaca_client import is_alpaca_enabled, get_account_info, get_positions, get_client
 from src.execution.order_manager import cancel_order
 
 router = APIRouter()
@@ -199,3 +199,16 @@ def alpaca_cancel(order_id: str):
     if success:
         return {"status": "canceled", "order_id": order_id}
     return JSONResponse(status_code=400, content={"error": "Failed to cancel order"})
+
+
+@router.post("/api/alpaca/cancel-all")
+def alpaca_cancel_all():
+    """Cancel ALL open Alpaca orders."""
+    client = get_client()
+    if not client:
+        return JSONResponse(status_code=503, content={"error": "Alpaca not connected"})
+    try:
+        client.cancel_orders()
+        return {"status": "all_canceled"}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
