@@ -17,7 +17,9 @@ from src.tracking.trade_logger import get_open_trades
 from src.risk.portfolio_risk import get_portfolio_summary
 from src.automation.scheduler import get_scheduler_status
 from src.automation.scanner import run_scan_cycle
-from src.automation.settler import auto_settle_open_trades
+from src.execution.order_sync import sync_all_open_trades
+from src.execution.alpaca_client import is_alpaca_enabled, get_account_info, get_positions
+from src.execution.order_manager import cancel_order
 
 router = APIRouter()
 
@@ -93,7 +95,60 @@ def trigger_scan():
 
 @router.post("/api/settle/trigger")
 def trigger_settle():
-    """Trigger auto-settlement in a background thread."""
-    thread = threading.Thread(target=auto_settle_open_trades, daemon=True)
+    """Trigger combined settlement (Alpaca + paper) in a background thread."""
+    thread = threading.Thread(target=sync_all_open_trades, daemon=True)
     thread.start()
     return {"status": "settlement_started"}
+
+
+@router.post("/api/sync/trigger")
+def trigger_sync():
+    """Trigger order sync (alias for settle)."""
+    thread = threading.Thread(target=sync_all_open_trades, daemon=True)
+    thread.start()
+    return {"status": "sync_started"}
+
+
+# --- Alpaca endpoints ---
+
+@router.get("/api/alpaca/status")
+def alpaca_status():
+    """Check if Alpaca is connected."""
+    enabled = is_alpaca_enabled()
+    if not enabled:
+        return {"enabled": False, "connected": False, "account_status": None}
+
+    account = get_account_info()
+    return {
+        "enabled": True,
+        "connected": account is not None,
+        "account_status": account.get("status") if account else None,
+    }
+
+
+@router.get("/api/alpaca/account")
+def alpaca_account():
+    """Get Alpaca account info."""
+    if not is_alpaca_enabled():
+        return JSONResponse(status_code=503, content={"error": "Alpaca not configured"})
+
+    account = get_account_info()
+    if not account:
+        return JSONResponse(status_code=503, content={"error": "Alpaca connection failed"})
+
+    return account
+
+
+@router.get("/api/alpaca/positions")
+def alpaca_positions():
+    """Get live Alpaca positions."""
+    return get_positions()
+
+
+@router.post("/api/alpaca/cancel/{order_id}")
+def alpaca_cancel(order_id: str):
+    """Cancel a specific Alpaca order."""
+    success = cancel_order(order_id)
+    if success:
+        return {"status": "canceled", "order_id": order_id}
+    return JSONResponse(status_code=400, content={"error": "Failed to cancel order"})

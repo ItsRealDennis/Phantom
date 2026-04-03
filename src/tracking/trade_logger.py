@@ -1,11 +1,14 @@
 """Trade logger — logs every signal (passed AND filtered) to SQLite."""
 
 import json
+import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 from src.config import DB_PATH
+
+logger = logging.getLogger(__name__)
 
 
 def get_connection() -> sqlite3.Connection:
@@ -63,6 +66,31 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_signals_status ON signals(status);
         CREATE INDEX IF NOT EXISTS idx_signals_passed ON signals(passed_filter);
     """)
+    conn.close()
+
+    # Run migration for Alpaca columns
+    _migrate_alpaca_columns()
+
+
+def _migrate_alpaca_columns():
+    """Add Alpaca-related columns if they don't exist. Idempotent."""
+    conn = get_connection()
+    new_columns = [
+        ("alpaca_order_id", "TEXT"),
+        ("alpaca_tp_order_id", "TEXT"),
+        ("alpaca_sl_order_id", "TEXT"),
+        ("alpaca_status", "TEXT"),
+        ("fill_price", "REAL"),
+        ("exit_price", "REAL"),
+        ("shares", "INTEGER"),
+        ("execution_mode", "TEXT DEFAULT 'paper'"),
+    ]
+    for col_name, col_type in new_columns:
+        try:
+            conn.execute(f"ALTER TABLE signals ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+    conn.commit()
     conn.close()
 
 
@@ -124,21 +152,104 @@ def log_signal(
     return signal_id
 
 
-def settle_trade(signal_id: int, status: str, real_pnl: float, notes: str = ""):
-    """Mark a trade as won/lost/stopped/expired."""
-    assert status in ("won", "lost", "stopped", "expired"), f"Invalid status: {status}"
+def settle_trade(signal_id: int, status: str, real_pnl: float, notes: str = "", exit_price: float | None = None):
+    """Mark a trade as won/lost/stopped/expired/canceled/rejected."""
+    valid = ("won", "lost", "stopped", "expired", "canceled", "rejected")
+    assert status in valid, f"Invalid status: {status}. Must be one of {valid}"
+    conn = get_connection()
+    if exit_price is not None:
+        conn.execute(
+            """
+            UPDATE signals
+            SET status = ?, settled_at = ?, real_pnl = ?, notes = ?, exit_price = ?
+            WHERE id = ? AND status = 'open'
+            """,
+            (status, datetime.now().isoformat(), real_pnl, notes, exit_price, signal_id),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE signals
+            SET status = ?, settled_at = ?, real_pnl = ?, notes = ?
+            WHERE id = ? AND status = 'open'
+            """,
+            (status, datetime.now().isoformat(), real_pnl, notes, signal_id),
+        )
+    conn.commit()
+    conn.close()
+
+
+# --- Alpaca-specific helpers ---
+
+def update_alpaca_ids(
+    signal_id: int,
+    order_id: str,
+    tp_order_id: str | None,
+    sl_order_id: str | None,
+    shares: int,
+):
+    """Store Alpaca order IDs and set execution_mode to 'alpaca'."""
     conn = get_connection()
     conn.execute(
         """
         UPDATE signals
-        SET status = ?, settled_at = ?, real_pnl = ?, notes = ?
-        WHERE id = ? AND status = 'open'
+        SET alpaca_order_id = ?, alpaca_tp_order_id = ?, alpaca_sl_order_id = ?,
+            shares = ?, execution_mode = 'alpaca'
+        WHERE id = ?
         """,
-        (status, datetime.now().isoformat(), real_pnl, notes, signal_id),
+        (order_id, tp_order_id, sl_order_id, shares, signal_id),
     )
     conn.commit()
     conn.close()
 
+
+def update_alpaca_status(
+    signal_id: int,
+    alpaca_status: str,
+    fill_price: float | None = None,
+    exit_price: float | None = None,
+):
+    """Update Alpaca sync status and fill prices."""
+    conn = get_connection()
+    conn.execute(
+        """
+        UPDATE signals
+        SET alpaca_status = ?,
+            fill_price = COALESCE(?, fill_price),
+            exit_price = COALESCE(?, exit_price)
+        WHERE id = ?
+        """,
+        (alpaca_status, fill_price, exit_price, signal_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_open_alpaca_trades() -> list[dict]:
+    """Get open signals that have Alpaca orders."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT * FROM signals
+        WHERE status = 'open' AND alpaca_order_id IS NOT NULL
+        ORDER BY created_at DESC"""
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_open_paper_trades() -> list[dict]:
+    """Get open signals without Alpaca orders (paper-only mode)."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT * FROM signals
+        WHERE status = 'open' AND alpaca_order_id IS NULL AND passed_filter = 1
+        ORDER BY created_at DESC"""
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# --- Existing helpers ---
 
 def get_open_trades() -> list[dict]:
     conn = get_connection()
@@ -196,9 +307,15 @@ def get_daily_pnl(date: str | None = None) -> float:
 
 
 def get_bankroll() -> float:
-    """Current bankroll = starting + total realized P&L."""
-    from src.config import STARTING_BANKROLL
+    """Current bankroll — Alpaca equity if connected, else starting + realized P&L."""
+    from src.execution.alpaca_client import is_alpaca_enabled, get_account_info
 
+    if is_alpaca_enabled():
+        account = get_account_info()
+        if account:
+            return account["equity"]
+
+    from src.config import STARTING_BANKROLL
     conn = get_connection()
     row = conn.execute(
         """

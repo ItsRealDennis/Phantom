@@ -422,6 +422,7 @@
     <div class="topbar-inner">
         <div class="logo">Phantom <span>Signal Validator</span></div>
         <div class="topbar-actions">
+            <span class="topbar-status" id="alpacaStatus"></span>
             <span class="topbar-status">
                 <span class="topbar-dot"></span>
                 <span id="lastRefresh">Live</span>
@@ -721,10 +722,39 @@
         el.innerHTML = html;
     }
 
+    // ---- Alpaca Status ----
+    async function loadAlpacaStatus() {
+        const d = await fetchJSON('/api/alpaca/status');
+        const el = document.getElementById('alpacaStatus');
+        if (!d || !d.enabled) {
+            el.innerHTML = '<span style="color:var(--text-tertiary)">Paper Mode</span>';
+            return;
+        }
+        if (d.connected) {
+            el.innerHTML = '<span style="color:var(--green)">Alpaca Connected</span>';
+        } else {
+            el.innerHTML = '<span style="color:var(--orange)">Alpaca Disconnected</span>';
+        }
+    }
+
     // ---- Portfolio ----
     async function loadPortfolio() {
         const d = await fetchJSON('/api/portfolio');
         if (!d) return;
+        const isAlpaca = d.execution_mode === 'alpaca';
+        let extraStats = '';
+        if (isAlpaca && d.buying_power !== undefined) {
+            extraStats = `
+                <div class="stat">
+                    <div class="stat-label">Buying Power</div>
+                    <div class="stat-value">${formatMoney(d.buying_power)}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Cash</div>
+                    <div class="stat-value">${formatMoney(d.cash)}</div>
+                </div>
+            `;
+        }
         document.getElementById('portfolio').innerHTML = `
             <div class="stats-grid">
                 <div class="stat">
@@ -743,6 +773,7 @@
                     <div class="stat-label">ROI</div>
                     <div class="stat-value ${pnlClass(d.roi_pct)}">${formatPct(d.roi_pct, true)}</div>
                 </div>
+                ${extraStats}
             </div>
         `;
     }
@@ -790,12 +821,15 @@
 
         let html = `<table><thead><tr>
             <th>Ticker</th><th>Strategy</th><th>Direction</th><th>Confidence</th>
-            <th>Entry</th><th>Stop</th><th>Target</th><th>R:R</th><th>Risk</th>
+            <th>Entry</th><th>Stop</th><th>Target</th><th>R:R</th><th>Risk</th><th>Mode</th>
         </tr></thead><tbody>`;
         for (const t of data) {
             const dirBadge = t.direction === 'LONG'
                 ? '<span class="badge badge-long">LONG</span>'
                 : '<span class="badge badge-short">SHORT</span>';
+            const mode = t.execution_mode === 'alpaca'
+                ? '<span class="badge badge-open">ALPACA</span>'
+                : '<span class="badge badge-no">PAPER</span>';
             html += `<tr>
                 <td class="cell-ticker">${t.ticker}</td>
                 <td style="text-transform:capitalize">${t.strategy.replace('_',' ')}</td>
@@ -806,6 +840,7 @@
                 <td class="cell-mono c-green">$${t.take_profit.toFixed(2)}</td>
                 <td>${t.rr_ratio.toFixed(2)}</td>
                 <td>${t.position_size ? formatMoney(t.position_size) : '--'}</td>
+                <td>${mode}</td>
             </tr>`;
         }
         html += '</tbody></table>';
@@ -914,6 +949,7 @@
             loadOpenTrades(),
             loadRecentSignals(),
             loadScheduler(),
+            loadAlpacaStatus(),
         ]);
         const now = new Date();
         document.getElementById('lastRefresh').textContent =

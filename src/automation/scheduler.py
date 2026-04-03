@@ -7,6 +7,8 @@ from apscheduler.triggers.cron import CronTrigger
 
 from src.automation.scanner import run_scan_cycle
 from src.automation.settler import auto_settle_open_trades
+from src.execution.order_sync import sync_alpaca_orders, sync_all_open_trades
+from src.execution.alpaca_client import is_alpaca_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -26,19 +28,30 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # Settlement check: weekdays every 30 min during market hours (9:30-15:30 ET)
+    # Alpaca order sync: every 5 min during market hours (if enabled)
+    if is_alpaca_enabled():
+        scheduler.add_job(
+            sync_alpaca_orders,
+            CronTrigger(day_of_week="mon-fri", hour="9-15", minute="*/5", timezone="US/Eastern"),
+            id="alpaca_sync",
+            name="Alpaca order sync",
+            max_instances=1,
+            replace_existing=True,
+        )
+
+    # Paper settlement: weekdays every 30 min during market hours
     scheduler.add_job(
         auto_settle_open_trades,
         CronTrigger(day_of_week="mon-fri", hour="9-15", minute="0,30", timezone="US/Eastern"),
-        id="auto_settle",
-        name="Auto-settle open trades",
+        id="paper_settle",
+        name="Paper trade settlement",
         max_instances=1,
         replace_existing=True,
     )
 
-    # End-of-day settlement: weekdays at 4:05 PM ET
+    # End-of-day combined sync: weekdays at 4:05 PM ET
     scheduler.add_job(
-        auto_settle_open_trades,
+        sync_all_open_trades,
         CronTrigger(day_of_week="mon-fri", hour=16, minute=5, timezone="US/Eastern"),
         id="eod_settle",
         name="End-of-day settlement",

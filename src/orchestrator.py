@@ -95,6 +95,36 @@ def analyze_and_log(ticker: str, strategy: str, timeframe: str = "1d") -> dict:
         filter_reason=filter_reason,
     )
 
+    # Step 7: Submit to Alpaca if enabled and signal passed
+    order_result = None
+    if passed:
+        from src.execution.alpaca_client import is_alpaca_enabled
+        if is_alpaca_enabled():
+            from src.execution.order_manager import submit_bracket_order
+            from src.tracking.trade_logger import update_alpaca_ids
+
+            order_result = submit_bracket_order({
+                "signal_id": signal_id,
+                "ticker": ticker,
+                "timeframe": timeframe,
+                "analysis": analysis,
+                "sizing": sizing,
+            })
+            if order_result.get("success"):
+                update_alpaca_ids(
+                    signal_id=signal_id,
+                    order_id=order_result["order_id"],
+                    tp_order_id=order_result.get("tp_order_id"),
+                    sl_order_id=order_result.get("sl_order_id"),
+                    shares=sizing["shares"],
+                )
+                logger.info("Alpaca bracket order placed for signal #%d", signal_id)
+            else:
+                logger.warning(
+                    "Alpaca order failed for signal #%d: %s — falling back to paper mode",
+                    signal_id, order_result.get("error"),
+                )
+
     return {
         "signal_id": signal_id,
         "ticker": ticker,
@@ -103,6 +133,7 @@ def analyze_and_log(ticker: str, strategy: str, timeframe: str = "1d") -> dict:
         "filter_reason": filter_reason,
         "analysis": analysis,
         "sizing": sizing,
+        "order": order_result,
     }
 
 
@@ -146,7 +177,9 @@ def run(ticker: str, strategy: str, timeframe: str):
             f"Direction: {analysis['direction']} | Confidence: {analysis['confidence']}%\n"
             f"Entry: ${analysis['entry']:.2f} | Stop: ${analysis['stopLoss']:.2f} | Target: ${analysis['takeProfit']:.2f}\n"
             f"Kelly: {sizing['kelly_pct']:.1f}% → Shrunk: {sizing['shrunk_kelly_pct']:.1f}% → Final: {sizing['final_risk_pct']:.1f}%\n"
-            f"Risk: ${sizing['dollar_risk']:.2f} | Shares: {sizing['shares']} | Position: ${sizing['position_value']:.2f}",
+            f"Risk: ${sizing['dollar_risk']:.2f} | Shares: {sizing['shares']} | Position: ${sizing['position_value']:.2f}" +
+            (f"\n[bold cyan]Alpaca order: {result['order']['order_id']}[/bold cyan]" if result.get("order", {}).get("success") else "") +
+            (f"\n[yellow]Alpaca failed: {result['order']['error']}[/yellow]" if result.get("order") and not result["order"].get("success") else ""),
             border_style="green",
         ))
     else:
