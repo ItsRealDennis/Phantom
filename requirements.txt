@@ -1,0 +1,9 @@
+anthropic>=0.40.0
+yfinance>=0.2.36
+pandas>=2.0.0
+click>=8.1.0
+rich>=13.0.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+apscheduler>=3.10.0
+pytz

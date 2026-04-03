@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phantom — Paper Trading Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            background: #0a0a0f;
+            color: #e0e0e0;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #00d4ff;
+            font-size: 1.6em;
+            margin-bottom: 4px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 0.85em;
+            margin-bottom: 24px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .grid-full { grid-column: 1 / -1; }
+        .card {
+            background: #12121a;
+            border: 1px solid #1e1e2e;
+            border-radius: 8px;
+            padding: 16px;
+        }
+        .card h2 {
+            font-size: 0.9em;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid #1a1a2a;
+        }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-label { color: #888; }
+        .stat-value { font-weight: bold; }
+        .positive { color: #00e676; }
+        .negative { color: #ff5252; }
+        .neutral { color: #ffd740; }
+        .muted { color: #555; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85em;
+        }
+        th {
+            text-align: left;
+            color: #666;
+            font-weight: normal;
+            text-transform: uppercase;
+            font-size: 0.8em;
+            letter-spacing: 0.5px;
+            padding: 8px 6px;
+            border-bottom: 1px solid #1e1e2e;
+        }
+        td {
+            padding: 8px 6px;
+            border-bottom: 1px solid #111118;
+        }
+        tr:hover { background: #16161f; }
+        .badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .badge-pass { background: #00e67620; color: #00e676; }
+        .badge-filter { background: #ffd74020; color: #ffd740; }
+        .badge-open { background: #00d4ff20; color: #00d4ff; }
+        .badge-won { background: #00e67620; color: #00e676; }
+        .badge-lost { background: #ff525220; color: #ff5252; }
+        .badge-stopped { background: #ff525220; color: #ff5252; }
+        .badge-filtered { background: #55555520; color: #555; }
+        .big-number {
+            font-size: 2em;
+            font-weight: bold;
+            line-height: 1.2;
+        }
+        .chart-container {
+            position: relative;
+            height: 250px;
+        }
+        .scheduler-jobs {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .job {
+            background: #16161f;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.8em;
+        }
+        .job-name { color: #00d4ff; }
+        .job-next { color: #888; }
+        .actions { margin-bottom: 16px; }
+        .btn {
+            background: #1e1e2e;
+            border: 1px solid #2a2a3e;
+            color: #00d4ff;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.85em;
+            margin-right: 8px;
+        }
+        .btn:hover { background: #2a2a3e; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .refresh-info {
+            color: #444;
+            font-size: 0.75em;
+            float: right;
+            margin-top: 8px;
+        }
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+            body { padding: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <h1>PHANTOM</h1>
+    <div class="subtitle">Paper Trading Signal Validator <span class="refresh-info" id="lastRefresh"></span></div>
+
+    <div class="actions">
+        <button class="btn" onclick="triggerScan()" id="scanBtn">Trigger Scan</button>
+        <button class="btn" onclick="triggerSettle()" id="settleBtn">Trigger Settlement</button>
+    </div>
+
+    <div class="grid">
+        <!-- Overview -->
+        <div class="card">
+            <h2>Overview</h2>
+            <div id="overview">Loading...</div>
+        </div>
+
+        <!-- Portfolio -->
+        <div class="card">
+            <h2>Portfolio</h2>
+            <div id="portfolio">Loading...</div>
+        </div>
+
+        <!-- Equity Curve -->
+        <div class="card grid-full">
+            <h2>Equity Curve</h2>
+            <div class="chart-container">
+                <canvas id="equityChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Strategy Breakdown -->
+        <div class="card grid-full">
+            <h2>Strategy Breakdown</h2>
+            <div id="strategies">Loading...</div>
+        </div>
+
+        <!-- Open Trades -->
+        <div class="card grid-full">
+            <h2>Open Trades</h2>
+            <div id="openTrades">Loading...</div>
+        </div>
+
+        <!-- Recent Signals -->
+        <div class="card grid-full">
+            <h2>Recent Signals</h2>
+            <div id="recentSignals">Loading...</div>
+        </div>
+
+        <!-- Filter Validation -->
+        <div class="card">
+            <h2>Filter Validation</h2>
+            <div id="filterValidation">Loading...</div>
+        </div>
+
+        <!-- Scheduler -->
+        <div class="card">
+            <h2>Scheduler</h2>
+            <div id="scheduler">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        let equityChart = null;
+
+        async function fetchJSON(url) {
+            const res = await fetch(url);
+            return res.json();
+        }
+
+        function pnlColor(val) {
+            if (val > 0) return 'positive';
+            if (val < 0) return 'negative';
+            return 'muted';
+        }
+
+        function formatPnl(val) {
+            if (val === null || val === undefined) return '-';
+            const sign = val >= 0 ? '+' : '';
+            return `${sign}$${val.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        }
+
+        async function loadOverview() {
+            const d = await fetchJSON('/api/overview');
+            document.getElementById('overview').innerHTML = `
+                <div class="stat-row">
+                    <span class="stat-label">Signals</span>
+                    <span class="stat-value">${d.total_signals} total / ${d.passed_filter} passed / ${d.filtered_out} filtered</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Open</span>
+                    <span class="stat-value">${d.open}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Settled</span>
+                    <span class="stat-value">${d.settled} (${d.wins}W / ${d.losses}L)</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Win Rate</span>
+                    <span class="stat-value ${d.win_rate >= 55 ? 'positive' : d.win_rate >= 50 ? 'neutral' : 'negative'}">${d.win_rate}%</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">P&L</span>
+                    <span class="stat-value ${pnlColor(d.total_pnl)}">${formatPnl(d.total_pnl)}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">ROI</span>
+                    <span class="stat-value ${pnlColor(d.roi)}">${d.roi >= 0 ? '+' : ''}${d.roi}%</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Bankroll</span>
+                    <span class="stat-value">$${d.bankroll.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                </div>
+            `;
+        }
+
+        async function loadPortfolio() {
+            const d = await fetchJSON('/api/portfolio');
+            document.getElementById('portfolio').innerHTML = `
+                <div class="stat-row">
+                    <span class="stat-label">Open Positions</span>
+                    <span class="stat-value">${d.open_positions} / ${d.max_positions}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Total Exposure</span>
+                    <span class="stat-value">$${d.total_exposure.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Bankroll</span>
+                    <span class="stat-value">$${d.bankroll.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Total P&L</span>
+                    <span class="stat-value ${pnlColor(d.total_pnl)}">${formatPnl(d.total_pnl)}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">ROI</span>
+                    <span class="stat-value ${pnlColor(d.roi_pct)}">${d.roi_pct >= 0 ? '+' : ''}${d.roi_pct}%</span>
+                </div>
+            `;
+        }
+
+        async function loadEquityCurve() {
+            const data = await fetchJSON('/api/equity-curve');
+            const labels = data.map(d => d[0]);
+            const values = data.map(d => d[1]);
+
+            if (equityChart) equityChart.destroy();
+
+            if (labels.length < 2) {
+                document.getElementById('equityChart').parentElement.innerHTML =
+                    '<div style="color:#444;text-align:center;padding:40px">Not enough data for equity curve yet</div>';
+                return;
+            }
+
+            const ctx = document.getElementById('equityChart').getContext('2d');
+            equityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Bankroll',
+                        data: values,
+                        borderColor: '#00d4ff',
+                        backgroundColor: '#00d4ff10',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#444', maxTicksLimit: 10 },
+                            grid: { color: '#1a1a2a' },
+                        },
+                        y: {
+                            ticks: {
+                                color: '#444',
+                                callback: v => '$' + v.toLocaleString(),
+                            },
+                            grid: { color: '#1a1a2a' },
+                        },
+                    },
+                },
+            });
+        }
+
+        async function loadStrategies() {
+            const data = await fetchJSON('/api/strategies');
+            if (!data.length) {
+                document.getElementById('strategies').innerHTML = '<span class="muted">No data yet</span>';
+                return;
+            }
+            let html = `<table>
+                <tr><th>Strategy</th><th>Signals</th><th>Passed</th><th>Settled</th><th>W</th><th>L</th><th>Win%</th><th>P&L</th></tr>`;
+            for (const s of data) {
+                const wrClass = s.win_rate >= 55 ? 'positive' : s.win_rate >= 50 ? 'neutral' : 'negative';
+                html += `<tr>
+                    <td>${s.strategy}</td>
+                    <td>${s.total}</td>
+                    <td>${s.passed}</td>
+                    <td>${s.settled}</td>
+                    <td>${s.wins}</td>
+                    <td>${s.losses}</td>
+                    <td class="${wrClass}">${s.win_rate}%</td>
+                    <td class="${pnlColor(s.pnl)}">${formatPnl(s.pnl)}</td>
+                </tr>`;
+            }
+            html += '</table>';
+            document.getElementById('strategies').innerHTML = html;
+        }
+
+        async function loadOpenTrades() {
+            const data = await fetchJSON('/api/open-trades');
+            if (!data.length) {
+                document.getElementById('openTrades').innerHTML = '<span class="muted">No open trades</span>';
+                return;
+            }
+            let html = `<table>
+                <tr><th>ID</th><th>Date</th><th>Ticker</th><th>Strategy</th><th>Dir</th><th>Conf</th><th>Entry</th><th>Stop</th><th>Target</th><th>R:R</th><th>Risk</th></tr>`;
+            for (const t of data) {
+                html += `<tr>
+                    <td>${t.id}</td>
+                    <td>${(t.created_at || '').slice(0, 16)}</td>
+                    <td><strong>${t.ticker}</strong></td>
+                    <td>${t.strategy}</td>
+                    <td>${t.direction}</td>
+                    <td>${t.confidence}%</td>
+                    <td>$${t.entry_price.toFixed(2)}</td>
+                    <td>$${t.stop_loss.toFixed(2)}</td>
+                    <td>$${t.take_profit.toFixed(2)}</td>
+                    <td>${t.rr_ratio.toFixed(2)}</td>
+                    <td>${t.position_size ? '$' + t.position_size.toFixed(2) : '-'}</td>
+                </tr>`;
+            }
+            html += '</table>';
+            document.getElementById('openTrades').innerHTML = html;
+        }
+
+        async function loadRecentSignals() {
+            const data = await fetchJSON('/api/signals?limit=15');
+            if (!data.length) {
+                document.getElementById('recentSignals').innerHTML = '<span class="muted">No signals yet</span>';
+                return;
+            }
+            let html = `<table>
+                <tr><th>ID</th><th>Date</th><th>Ticker</th><th>Strategy</th><th>Dir</th><th>Conf</th><th>Entry</th><th>R:R</th><th>Filter</th><th>Status</th><th>P&L</th></tr>`;
+            for (const s of data) {
+                const filterBadge = s.passed_filter
+                    ? '<span class="badge badge-pass">PASS</span>'
+                    : '<span class="badge badge-filter">NO</span>';
+                const statusBadge = `<span class="badge badge-${s.status}">${s.status.toUpperCase()}</span>`;
+                const pnl = s.real_pnl !== null ? `<span class="${pnlColor(s.real_pnl)}">${formatPnl(s.real_pnl)}</span>` : '-';
+
+                html += `<tr>
+                    <td>${s.id}</td>
+                    <td>${(s.created_at || '').slice(0, 10)}</td>
+                    <td><strong>${s.ticker}</strong></td>
+                    <td>${s.strategy}</td>
+                    <td>${s.direction}</td>
+                    <td>${s.confidence}%</td>
+                    <td>$${s.entry_price.toFixed(2)}</td>
+                    <td>${s.rr_ratio.toFixed(2)}</td>
+                    <td>${filterBadge}</td>
+                    <td>${statusBadge}</td>
+                    <td>${pnl}</td>
+                </tr>`;
+            }
+            html += '</table>';
+            document.getElementById('recentSignals').innerHTML = html;
+        }
+
+        async function loadFilterValidation() {
+            const d = await fetchJSON('/api/filter-validation');
+            if (d.total_tracked === 0) {
+                document.getElementById('filterValidation').innerHTML = '<span class="muted">No filtered signals tracked yet</span>';
+                return;
+            }
+            document.getElementById('filterValidation').innerHTML = `
+                <div class="stat-row">
+                    <span class="stat-label">Tracked</span>
+                    <span class="stat-value">${d.total_tracked}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Would Have Won</span>
+                    <span class="stat-value">${d.would_have_won}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Would Have Lost</span>
+                    <span class="stat-value">${d.would_have_lost}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Hyp. Win Rate</span>
+                    <span class="stat-value">${d.hypothetical_win_rate}%</span>
+                </div>
+            `;
+        }
+
+        async function loadScheduler() {
+            const jobs = await fetchJSON('/api/scheduler/status');
+            if (!jobs.length) {
+                document.getElementById('scheduler').innerHTML = '<span class="muted">No jobs scheduled</span>';
+                return;
+            }
+            let html = '<div class="scheduler-jobs">';
+            for (const j of jobs) {
+                html += `<div class="job">
+                    <div class="job-name">${j.name}</div>
+                    <div class="job-next">Next: ${j.next_run ? new Date(j.next_run).toLocaleString() : 'N/A'}</div>
+                </div>`;
+            }
+            html += '</div>';
+            document.getElementById('scheduler').innerHTML = html;
+        }
+
+        async function triggerScan() {
+            const btn = document.getElementById('scanBtn');
+            btn.disabled = true;
+            btn.textContent = 'Scanning...';
+            await fetch('/api/scan/trigger', { method: 'POST' });
+            setTimeout(() => { btn.disabled = false; btn.textContent = 'Trigger Scan'; refreshAll(); }, 5000);
+        }
+
+        async function triggerSettle() {
+            const btn = document.getElementById('settleBtn');
+            btn.disabled = true;
+            btn.textContent = 'Settling...';
+            await fetch('/api/settle/trigger', { method: 'POST' });
+            setTimeout(() => { btn.disabled = false; btn.textContent = 'Trigger Settlement'; refreshAll(); }, 3000);
+        }
+
+        async function refreshAll() {
+            await Promise.all([
+                loadOverview(),
+                loadPortfolio(),
+                loadEquityCurve(),
+                loadStrategies(),
+                loadOpenTrades(),
+                loadRecentSignals(),
+                loadFilterValidation(),
+                loadScheduler(),
+            ]);
+            document.getElementById('lastRefresh').textContent =
+                'Last refresh: ' + new Date().toLocaleTimeString();
+        }
+
+        // Initial load + auto-refresh every 60s
+        refreshAll();
+        setInterval(refreshAll, 60000);
+    </script>
+</body>
+</html>
