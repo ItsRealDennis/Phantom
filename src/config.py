@@ -23,7 +23,7 @@ ALPHA_VANTAGE_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "")
 CLAUDE_MODEL = "claude-sonnet-4-20250514"
 
 # Paper bankroll
-STARTING_BANKROLL = 100_000.00
+STARTING_BANKROLL = 10_000.00
 
 # Trade filters — mirrors BetByGPT market_filters.py
 FILTERS = {

@@ -20,7 +20,7 @@ from src.tracking.analytics import (
 from src.tracking.trade_logger import get_open_trades, get_signal_by_id
 from src.risk.portfolio_risk import get_portfolio_summary
 from src.automation.scheduler import get_scheduler_status
-from src.automation.scanner import run_scan_cycle
+from src.automation.scanner import run_scan_cycle, run_crypto_scan
 from src.execution.order_sync import sync_all_open_trades
 from src.execution.alpaca_client import is_alpaca_enabled, get_account_info, get_positions, get_client
 from src.execution.order_manager import cancel_order
@@ -134,10 +134,10 @@ def api_scheduler_status():
 
 @router.post("/api/scan/trigger")
 def trigger_scan():
-    """Trigger a scan cycle in a background thread."""
-    thread = threading.Thread(target=run_scan_cycle, daemon=True)
-    thread.start()
-    return {"status": "scan_started"}
+    """Trigger both stock and crypto scans in background threads."""
+    threading.Thread(target=run_scan_cycle, daemon=True).start()
+    threading.Thread(target=run_crypto_scan, daemon=True).start()
+    return {"status": "scan_started", "scans": ["stocks", "crypto"]}
 
 
 @router.post("/api/settle/trigger")
