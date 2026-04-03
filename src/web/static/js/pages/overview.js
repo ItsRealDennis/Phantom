@@ -222,15 +222,77 @@ async function renderOverview(container) {
         openEl.appendChild(buildEmptyState('', 'No open positions', 'Signals that pass filters become open trades'));
     }
 
-    // Auto-refresh
+    // Auto-refresh — full re-render every 30s
     const refreshInterval = setInterval(async () => {
-        const d = await API.overview();
-        if (d) {
-            document.getElementById('heroBankroll').textContent = formatMoney(d.bankroll);
-            document.getElementById('heroPnl').textContent = formatMoney(d.total_pnl, true);
-            document.getElementById('heroSignals').textContent = d.total_signals;
+        const [ov, ot, strats, port] = await Promise.all([
+            API.overview(), API.openTrades(), API.strategies(), API.portfolio(),
+        ]);
+        if (ov) {
+            document.getElementById('heroBankroll').textContent = formatMoney(ov.bankroll);
+            document.getElementById('heroBankrollSub').innerHTML = `<span class="${pnlClass(ov.total_pnl)}">${formatMoney(ov.total_pnl, true)}</span> from $100,000`;
+            document.getElementById('heroPnl').className = `hero-value ${pnlClass(ov.total_pnl)}`;
+            document.getElementById('heroPnl').textContent = formatMoney(ov.total_pnl, true);
+            document.getElementById('heroPnlSub').textContent = `${ov.settled} settled trades`;
+            const wrClass = winRateClass(ov.win_rate);
+            document.getElementById('heroWinRate').className = `hero-value ${wrClass}`;
+            document.getElementById('heroWinRate').textContent = ov.settled > 0 ? ov.win_rate + '%' : '--';
+            document.getElementById('heroWinRateSub').textContent = ov.settled > 0 ? `${ov.wins}W / ${ov.losses}L` : 'No settled trades';
+            document.getElementById('heroSignals').textContent = ov.total_signals;
+            document.getElementById('heroSignalsSub').textContent = `${ov.passed_filter} passed / ${ov.filtered_out} filtered`;
+            document.getElementById('heroRoi').className = `hero-value ${pnlClass(ov.roi)}`;
+            document.getElementById('heroRoi').textContent = ov.roi ? formatPct(ov.roi, true) : '--';
         }
-    }, 60000);
+        if (port) {
+            document.getElementById('qgPositions').textContent = `${port.open_positions} / ${port.max_positions}`;
+        }
+        // Re-render strategies
+        const stratEl = document.getElementById('strategiesCard');
+        if (stratEl && strats && strats.length > 0) {
+            const table = buildTable(
+                ['Strategy', 'Signals', 'W', 'L', 'Win %', 'P&L'],
+                strats.map(s => ({
+                    cells: [
+                        { html: `<span class="cell-ticker" style="text-transform:capitalize">${s.strategy.replace('_', ' ')}</span>` },
+                        s.total, s.wins, s.losses,
+                        { html: `<span class="${winRateClass(s.win_rate)}">${s.settled > 0 ? s.win_rate + '%' : '--'}</span>` },
+                        { html: `<span class="${pnlClass(s.pnl)}">${formatMoney(s.pnl, true)}</span>` },
+                    ]
+                }))
+            );
+            stratEl.innerHTML = '';
+            stratEl.appendChild(table);
+        }
+        // Re-render open trades
+        const openEl = document.getElementById('openTradesCard');
+        if (openEl && ot) {
+            document.getElementById('openCount').textContent = ot.length || '';
+            if (ot.length > 0) {
+                const table = buildTable(
+                    ['Ticker', 'Strategy', 'Dir', 'Conf', 'Entry', 'R:R', 'Risk'],
+                    ot.map(t => ({
+                        cells: [
+                            { html: `<span class="cell-ticker">${t.ticker}</span>` },
+                            { html: `<span style="text-transform:capitalize">${t.strategy.replace('_', ' ')}</span>` },
+                            { html: directionBadge(t.direction) },
+                            t.confidence + '%',
+                            { html: `<span class="cell-mono">$${t.entry_price.toFixed(2)}</span>` },
+                            t.rr_ratio.toFixed(2),
+                            { html: `<span>${t.position_size ? formatMoney(t.position_size) : '--'}</span>` },
+                        ]
+                    }))
+                );
+                openEl.innerHTML = '';
+                openEl.appendChild(table);
+                openEl.querySelectorAll('tbody tr').forEach((tr, i) => {
+                    tr.classList.add('clickable');
+                    tr.addEventListener('click', () => Router.navigate('#/trade/' + ot[i].id));
+                });
+            } else {
+                openEl.innerHTML = '';
+                openEl.appendChild(buildEmptyState('', 'No open positions', 'Signals that pass filters become open trades'));
+            }
+        }
+    }, 30000);
 
     return () => {
         clearInterval(refreshInterval);
