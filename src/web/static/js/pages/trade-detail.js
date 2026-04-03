@@ -124,7 +124,7 @@ async function renderTradeDetail(container, params) {
                 </div>
                 <div class="metadata-item">
                     <div class="metadata-label">Kelly %</div>
-                    <div class="metadata-value">${signal.kelly_pct ? (signal.kelly_pct * 100).toFixed(2) + '%' : '--'}</div>
+                    <div class="metadata-value">${signal.kelly_pct ? signal.kelly_pct.toFixed(2) + '%' : '--'}</div>
                 </div>
                 <div class="metadata-item">
                     <div class="metadata-label">Position Size</div>
