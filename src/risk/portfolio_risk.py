@@ -37,7 +37,7 @@ def get_sector_exposure() -> dict[str, float]:
 
 
 def get_portfolio_summary() -> dict:
-    """Summary of current portfolio state — uses Alpaca data when available."""
+    """Summary of current portfolio state."""
     from src.execution.alpaca_client import is_alpaca_enabled, get_account_info
 
     conn = get_connection()
@@ -62,23 +62,15 @@ def get_portfolio_summary() -> dict:
 
     conn.close()
 
-    # Use Alpaca account data when available
+    # Always use configured bankroll, not Alpaca equity
+    bankroll = get_bankroll()
+
+    # Check Alpaca connection status for display
     alpaca_connected = False
     if is_alpaca_enabled():
         account = get_account_info()
         if account:
             alpaca_connected = True
-            bankroll = account["equity"]
-            buying_power = account["buying_power"]
-            cash = account["cash"]
-        else:
-            bankroll = STARTING_BANKROLL + total_pnl
-            buying_power = None
-            cash = None
-    else:
-        bankroll = STARTING_BANKROLL + total_pnl
-        buying_power = None
-        cash = None
 
     result = {
         "open_positions": open_trades,
@@ -89,11 +81,6 @@ def get_portfolio_summary() -> dict:
         "roi_pct": round((total_pnl / STARTING_BANKROLL) * 100, 2) if STARTING_BANKROLL > 0 else 0,
         "execution_mode": "alpaca" if alpaca_connected else "paper",
     }
-
-    if buying_power is not None:
-        result["buying_power"] = round(buying_power, 2)
-    if cash is not None:
-        result["cash"] = round(cash, 2)
 
     return result
 
