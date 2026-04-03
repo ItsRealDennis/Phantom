@@ -53,7 +53,8 @@ async function renderRisk(container) {
 
     // Risk metrics cards
     const metricsEl = document.getElementById('riskMetrics');
-    if (metrics) {
+    const hasSettledTrades = metrics && (metrics.gross_profit > 0 || metrics.gross_loss > 0 || metrics.longest_win_streak > 0 || metrics.longest_loss_streak > 0);
+    if (metrics && hasSettledTrades) {
         const items = [
             { label: 'Sharpe Ratio', value: metrics.sharpe_ratio.toFixed(2), color: metrics.sharpe_ratio >= 1 ? 'c-green' : metrics.sharpe_ratio >= 0 ? 'c-orange' : 'c-red' },
             { label: 'Max Drawdown', value: '-' + metrics.max_drawdown_pct.toFixed(2) + '%', color: 'c-red' },
@@ -73,14 +74,14 @@ async function renderRisk(container) {
             metricsEl.appendChild(card);
         });
     } else {
-        metricsEl.innerHTML = '<div class="c-muted" style="padding:16px">No risk data yet</div>';
+        metricsEl.innerHTML = '<div class="c-muted" style="padding:16px">Waiting for settled trades — metrics will appear once positions are closed</div>';
     }
 
     // Exposure section
     const expEl = document.getElementById('exposureSection');
     if (portfolio) {
         const maxPos = portfolio.max_positions || 5;
-        const bankroll = portfolio.bankroll || 100000;
+        const bankroll = portfolio.bankroll || 10000;
         const exposure = portfolio.total_exposure || 0;
         const openCount = portfolio.open_positions || 0;
         const exposurePct = bankroll > 0 ? (exposure / bankroll * 100) : 0;

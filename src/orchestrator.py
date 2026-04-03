@@ -14,7 +14,7 @@ from src.analysis.claude_analyst import analyze
 from src.risk.trade_filter import apply_filters
 from src.risk.position_sizer import size_position, adjust_stop_for_atr
 from src.tracking.trade_logger import log_signal, get_bankroll
-from src.config import STRATEGIES, VALID_TIMEFRAMES
+from src.config import STRATEGIES, VALID_TIMEFRAMES, FILTERS
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -116,6 +116,15 @@ def analyze_and_log(ticker: str, strategy: str, timeframe: str = "1d") -> dict:
         entry_price=analysis["entry"],
         stop_loss=analysis["stopLoss"],
     )
+
+    # Step 5b: Re-check position limit right before logging (prevents race condition
+    # where multiple signals pass the filter in the same scan cycle)
+    if passed:
+        from src.tracking.trade_logger import count_open_positions
+        current_open = count_open_positions()
+        if current_open >= FILTERS["max_open_positions"]:
+            passed = False
+            filter_reason = f"Position limit reached during scan ({current_open}/{FILTERS['max_open_positions']})"
 
     # Step 6: Log signal
     signal_id = log_signal(

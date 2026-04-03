@@ -83,7 +83,8 @@ async function renderOverview(container) {
     // Hero KPIs
     if (overview) {
         document.getElementById('heroBankroll').textContent = formatMoney(overview.bankroll);
-        document.getElementById('heroBankrollSub').innerHTML = `<span class="${pnlClass(overview.total_pnl)}">${formatMoney(overview.total_pnl, true)}</span> from $100,000`;
+        const startingBankroll = overview.bankroll - overview.total_pnl;
+        document.getElementById('heroBankrollSub').innerHTML = `<span class="${pnlClass(overview.total_pnl)}">${formatMoney(overview.total_pnl, true)}</span> from ${formatMoney(startingBankroll)}`;
 
         document.getElementById('heroPnl').className = `hero-value ${pnlClass(overview.total_pnl)}`;
         document.getElementById('heroPnl').textContent = formatMoney(overview.total_pnl, true);
@@ -229,7 +230,8 @@ async function renderOverview(container) {
         ]);
         if (ov) {
             document.getElementById('heroBankroll').textContent = formatMoney(ov.bankroll);
-            document.getElementById('heroBankrollSub').innerHTML = `<span class="${pnlClass(ov.total_pnl)}">${formatMoney(ov.total_pnl, true)}</span> from $100,000`;
+            const startBankroll = ov.bankroll - ov.total_pnl;
+            document.getElementById('heroBankrollSub').innerHTML = `<span class="${pnlClass(ov.total_pnl)}">${formatMoney(ov.total_pnl, true)}</span> from ${formatMoney(startBankroll)}`;
             document.getElementById('heroPnl').className = `hero-value ${pnlClass(ov.total_pnl)}`;
             document.getElementById('heroPnl').textContent = formatMoney(ov.total_pnl, true);
             document.getElementById('heroPnlSub').textContent = `${ov.settled} settled trades`;
