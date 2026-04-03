@@ -1,4 +1,4 @@
-"""Trade filter — confidence threshold, min R:R, liquidity check, portfolio limits."""
+"""Trade filter — confidence threshold, min R:R, ATR validation, portfolio limits."""
 
 from src.config import FILTERS
 from src.tracking.trade_logger import (
@@ -15,6 +15,9 @@ def apply_filters(
     rr_ratio: float,
     direction: str,
     sector: str = "Unknown",
+    atr: float = None,
+    entry: float = None,
+    stop_loss: float = None,
 ) -> tuple[bool, str | None]:
     """
     Apply all trade filters. Returns (passed, reason_if_filtered).
@@ -32,6 +35,13 @@ def apply_filters(
     # 3. Minimum risk:reward
     if rr_ratio < FILTERS["min_rr_ratio"]:
         return False, f"R:R {rr_ratio:.2f} below minimum {FILTERS['min_rr_ratio']}"
+
+    # 3b. ATR-based stop validation — reject if stop is inside 0.5x ATR (noise)
+    if atr and atr > 0 and entry and stop_loss:
+        stop_distance = abs(entry - stop_loss)
+        atr_multiple = stop_distance / atr
+        if atr_multiple < 0.5:
+            return False, f"Stop too tight ({atr_multiple:.1f}x ATR, min 0.5x)"
 
     # 4. Max open positions
     open_count = count_open_positions()

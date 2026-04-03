@@ -36,10 +36,10 @@ def _get_next_earnings(tk) -> str | None:
     return None
 
 
-def summarize_fundamentals(data: dict) -> str:
-    """Create a text summary for Claude."""
+def summarize_fundamentals(data: dict, mode: str = "intraday") -> str:
+    """Create a text summary for Claude. Intraday mode trims irrelevant fields."""
     lines = []
-    if data.get("sector"):
+    if mode != "intraday" and data.get("sector"):
         lines.append(f"Sector: {data['sector']} | Industry: {data.get('industry', 'N/A')}")
     if data.get("market_cap"):
         cap = data["market_cap"]
@@ -50,12 +50,12 @@ def summarize_fundamentals(data: dict) -> str:
         else:
             cap_str = f"${cap/1e6:.0f}M"
         lines.append(f"Market Cap: {cap_str}")
-    if data.get("pe_ratio"):
+    if mode != "intraday" and data.get("pe_ratio"):
         lines.append(f"P/E: {data['pe_ratio']:.1f} | Forward P/E: {data.get('forward_pe', 'N/A')}")
     if data.get("beta"):
         lines.append(f"Beta: {data['beta']:.2f}")
     if data.get("earnings_date"):
-        lines.append(f"Next Earnings: {data['earnings_date']}")
+        lines.append(f"EARNINGS WARNING: Next Earnings {data['earnings_date']}")
     if data.get("short_ratio"):
         lines.append(f"Short Ratio: {data['short_ratio']:.1f}")
     if data.get("fifty_two_week_high") and data.get("fifty_two_week_low"):

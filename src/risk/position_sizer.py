@@ -82,3 +82,46 @@ def size_position(
         "shares": shares,
         "position_value": round(position_value, 2),
     }
+
+
+def adjust_stop_for_atr(
+    entry_price: float,
+    stop_loss: float,
+    take_profit: float,
+    direction: str,
+    atr: float,
+) -> dict:
+    """
+    Clamp stop loss to 1x-3x ATR from entry.
+    Recalculates take_profit to maintain original R:R ratio.
+    """
+    if atr <= 0:
+        return {
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "stop_adjusted": False,
+            "atr_multiple": 0,
+        }
+
+    original_stop_dist = abs(entry_price - stop_loss)
+    original_tp_dist = abs(take_profit - entry_price)
+    original_rr = original_tp_dist / original_stop_dist if original_stop_dist > 0 else 2.0
+
+    min_stop = 1.0 * atr
+    max_stop = 3.0 * atr
+
+    adjusted_stop_dist = max(min(original_stop_dist, max_stop), min_stop)
+
+    if direction == "LONG":
+        new_stop = entry_price - adjusted_stop_dist
+        new_tp = entry_price + adjusted_stop_dist * original_rr
+    else:
+        new_stop = entry_price + adjusted_stop_dist
+        new_tp = entry_price - adjusted_stop_dist * original_rr
+
+    return {
+        "stop_loss": round(new_stop, 2),
+        "take_profit": round(new_tp, 2),
+        "stop_adjusted": abs(adjusted_stop_dist - original_stop_dist) > 0.01,
+        "atr_multiple": round(adjusted_stop_dist / atr, 2),
+    }

@@ -28,9 +28,9 @@ STARTING_BANKROLL = 100_000.00
 # Trade filters — mirrors BetByGPT market_filters.py
 FILTERS = {
     "min_confidence": 55,           # Below this = no trade
-    "min_rr_ratio": 1.5,            # Minimum risk:reward ratio
+    "min_rr_ratio": 2.0,            # Minimum risk:reward ratio
     "max_position_pct": 0.015,      # 1.5% max bankroll risk per trade
-    "max_open_positions": 10,        # Portfolio-level limit
+    "max_open_positions": 5,         # Portfolio-level limit
     "max_sector_exposure": 0.30,     # No more than 30% in one sector
     "max_daily_loss_pct": 0.03,      # 3% daily loss = stop trading for the day
     "edge_shrinkage": 0.50,          # Halve the estimated edge for sizing

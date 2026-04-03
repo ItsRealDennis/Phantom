@@ -15,13 +15,15 @@ Your job is to analyze a setup and output a probability estimate with TIGHT intr
 
 Rules:
 - You are DAY TRADING. Trades last minutes to hours, not days.
-- Entry = current price (the system uses market orders for instant fill)
-- Set stop loss TIGHT: 0.5-2% from entry. No wide stops — this is intraday.
-- Set take profit with minimum 1.5:1 reward-to-risk. Aim for 2:1+ when momentum is strong.
-- Estimate PROBABILITY of reaching take-profit before stop-loss within the trading session
-- Be decisive. If the setup is there, confidence should reflect it (55-70%). Don't hedge everything to 50%.
-- Look for: momentum continuation, VWAP bounces, breakout retests, exhaustion reversals
-- Avoid: low volume chop, mid-range no-man's-land, pre-earnings binary risk
+- Entry = current price (the system uses market orders for instant fill).
+- Use the TECHNICAL INDICATORS provided: RSI for overbought/oversold, MACD for momentum direction,
+  ATR for volatility-appropriate stops, VWAP for intraday fair value, Bollinger Bands for mean reversion.
+- Set stops based on ATR: minimum 1x ATR from entry, maximum 3x ATR. Tighter stops get noise-stopped.
+- Set take profit with minimum 2:1 reward-to-risk. Aim for 2.5:1+ when momentum is strong.
+- Estimate PROBABILITY of reaching take-profit before stop-loss within the trading session.
+- Be decisive. If the setup has strong indicator confluence (55-70%). Weak confluence = low confidence.
+- Look for: VWAP bounces/breaks, RSI divergences, MACD crosses, Bollinger Band extremes, EMA9 trend.
+- Avoid: low volume chop, RSI in neutral 40-60 zone for mean reversion, pre-earnings binary risk.
 
 OUTPUT FORMAT (JSON only, no markdown, no code fences):
 {
@@ -49,6 +51,37 @@ def load_strategy_prompt(strategy: str) -> str:
     return prompt_file.read_text()
 
 
+def _format_indicators(indicators: dict) -> str:
+    """Format indicator dict into a readable text section for Claude."""
+    if not indicators:
+        return "No indicators available."
+
+    lines = [
+        f"RSI(14): {indicators['rsi_14']} ({indicators['rsi_label']})",
+        f"MACD: Line {indicators['macd_line']} | Signal {indicators['macd_signal']} | Histogram {indicators['macd_histogram']} ({indicators['macd_cross']})",
+        f"ATR(14): {indicators['atr_14']} ({indicators['atr_pct']}% of price)",
+    ]
+
+    if indicators.get("vwap") is not None:
+        lines.append(
+            f"VWAP: {indicators['vwap']} (price is {indicators['vwap_distance_pct']:+.2f}% from VWAP)"
+        )
+
+    if indicators.get("bb_upper") is not None:
+        lines.append(
+            f"Bollinger Bands(20,2): Upper {indicators['bb_upper']} | Lower {indicators['bb_lower']} | %B: {indicators['bb_pct_b']}"
+        )
+
+    lines.append(f"EMA 9: {indicators['ema_9']} ({indicators['ema_9_slope']})")
+
+    if indicators.get("swing_highs"):
+        lines.append(f"Recent Swing Highs: {indicators['swing_highs']}")
+    if indicators.get("swing_lows"):
+        lines.append(f"Recent Swing Lows: {indicators['swing_lows']}")
+
+    return "\n".join(lines)
+
+
 def build_user_prompt(
     ticker: str,
     strategy: str,
@@ -58,9 +91,11 @@ def build_user_prompt(
     volume_profile: str,
     fundamentals_summary: str,
     news_headlines: str,
+    indicators: dict = None,
 ) -> str:
     """Build the user message with all collected data."""
     strategy_context = load_strategy_prompt(strategy)
+    indicators_text = _format_indicators(indicators) if indicators else "No indicators available."
 
     return f"""{strategy_context}
 
@@ -84,6 +119,9 @@ R1: {key_levels.get('r1')} | R2: {key_levels.get('r2')}
 S1: {key_levels.get('s1')} | S2: {key_levels.get('s2')}
 SMA 20: {key_levels.get('sma_20')} | SMA 50: {key_levels.get('sma_50')}
 
+TECHNICAL INDICATORS:
+{indicators_text}
+
 VOLUME: {volume_profile}
 
 FUNDAMENTALS:
@@ -104,6 +142,7 @@ def analyze(
     volume_profile: str,
     fundamentals_summary: str,
     news_headlines: str,
+    indicators: dict = None,
 ) -> dict:
     """Send data to Claude, parse structured response."""
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -117,6 +156,7 @@ def analyze(
         volume_profile=volume_profile,
         fundamentals_summary=fundamentals_summary,
         news_headlines=news_headlines,
+        indicators=indicators,
     )
 
     response = client.messages.create(
@@ -131,7 +171,6 @@ def analyze(
     # Strip markdown code fences if Claude wraps the JSON
     if raw_text.startswith("```"):
         lines = raw_text.split("\n")
-        # Remove first line (```json or ```) and last line (```)
         lines = [l for l in lines if not l.strip().startswith("```")]
         raw_text = "\n".join(lines)
 
@@ -140,7 +179,6 @@ def analyze(
     except json.JSONDecodeError as e:
         raise ValueError(f"Claude returned invalid JSON: {e}\nRaw response:\n{raw_text}")
 
-    # Validate required fields
     required = [
         "direction", "confidence", "entry", "stopLoss",
         "takeProfit", "riskRewardRatio", "reasoning",

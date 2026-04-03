@@ -12,7 +12,7 @@ from src.collectors.market_data import collect_market_data
 from src.collectors.fundamentals import get_fundamentals, summarize_fundamentals, get_news_headlines
 from src.analysis.claude_analyst import analyze
 from src.risk.trade_filter import apply_filters
-from src.risk.position_sizer import size_position
+from src.risk.position_sizer import size_position, adjust_stop_for_atr
 from src.tracking.trade_logger import log_signal, get_bankroll
 from src.config import STRATEGIES, VALID_TIMEFRAMES
 
@@ -32,10 +32,14 @@ def analyze_and_log(ticker: str, strategy: str, timeframe: str = "1d") -> dict:
     # Step 1: Collect market data
     market = collect_market_data(ticker, timeframe)
 
+    # Step 1b: Extract indicators
+    indicators = market.get("indicators", {})
+
     # Step 2: Collect fundamentals & news
+    is_intraday = timeframe in ("5m", "15m", "1h")
     try:
         fund_data = get_fundamentals(ticker)
-        fund_summary = summarize_fundamentals(fund_data)
+        fund_summary = summarize_fundamentals(fund_data, mode="intraday" if is_intraday else "daily")
         news = get_news_headlines(ticker)
     except Exception as e:
         logger.warning("Fundamentals/news fetch failed for %s: %s", ticker, e)
@@ -43,7 +47,7 @@ def analyze_and_log(ticker: str, strategy: str, timeframe: str = "1d") -> dict:
         fund_summary = "Unavailable"
         news = "Unavailable"
 
-    # Step 3: Send to Claude
+    # Step 3: Send to Claude (with indicators)
     analysis = analyze(
         ticker=ticker,
         strategy=strategy,
@@ -53,15 +57,41 @@ def analyze_and_log(ticker: str, strategy: str, timeframe: str = "1d") -> dict:
         volume_profile=market["volume_profile"],
         fundamentals_summary=fund_summary,
         news_headlines=news,
+        indicators=indicators,
     )
 
-    # Step 4: Apply filters
+    # Step 3b: Adjust stops with ATR (clamp to 1-3x ATR)
+    atr = indicators.get("atr_14", 0)
+    if atr > 0:
+        adjusted = adjust_stop_for_atr(
+            entry_price=analysis["entry"],
+            stop_loss=analysis["stopLoss"],
+            take_profit=analysis["takeProfit"],
+            direction=analysis["direction"],
+            atr=atr,
+        )
+        if adjusted["stop_adjusted"]:
+            logger.info(
+                "%s stop adjusted: $%.2f → $%.2f (%.1fx ATR)",
+                ticker, analysis["stopLoss"], adjusted["stop_loss"], adjusted["atr_multiple"],
+            )
+            analysis["stopLoss"] = adjusted["stop_loss"]
+            analysis["takeProfit"] = adjusted["take_profit"]
+            # Recalculate R:R with adjusted levels
+            stop_dist = abs(analysis["entry"] - adjusted["stop_loss"])
+            tp_dist = abs(adjusted["take_profit"] - analysis["entry"])
+            analysis["riskRewardRatio"] = round(tp_dist / stop_dist, 2) if stop_dist > 0 else 0
+
+    # Step 4: Apply filters (with ATR validation)
     passed, filter_reason = apply_filters(
         ticker=ticker,
         confidence=analysis["confidence"],
         rr_ratio=analysis["riskRewardRatio"],
         direction=analysis["direction"],
         sector=fund_data.get("sector", "Unknown"),
+        atr=atr,
+        entry=analysis["entry"],
+        stop_loss=analysis["stopLoss"],
     )
 
     # Step 5: Position sizing (calculate even if filtered, for logging)
