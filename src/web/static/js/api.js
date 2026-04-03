@@ -60,4 +60,13 @@ const API = {
     alpacaPositions()   { return this.get('/api/alpaca/positions'); },
     triggerScan()       { return this.post('/api/scan/trigger'); },
     triggerSettle()     { return this.post('/api/settle/trigger'); },
+
+    // Phase 2 endpoints
+    circuitBreakers()       { return this.get('/api/circuit-breakers'); },
+    resumeBreaker(id)       { return this.post(`/api/circuit-breakers/${id}/resume`); },
+    portfolioRiskDetail()   { return this.get('/api/risk/portfolio-detail'); },
+    strategyHealth()        { return this.get('/api/strategies/health'); },
+    filterValidationDetail(){ return this.get('/api/filter-validation/detailed'); },
+    openTradesLive()        { return this.get('/api/open-trades/live'); },
+    snapshots(days = 30)    { return this.get(`/api/snapshots?days=${days}`); },
 };

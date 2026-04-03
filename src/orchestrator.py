@@ -29,6 +29,26 @@ def analyze_and_log(ticker: str, strategy: str, timeframe: str = "1d") -> dict:
     """
     ticker = ticker.upper()
 
+    # Step 0: Circuit breaker pre-check (skip Claude call if halted)
+    from src.risk.circuit_breakers import check_circuit_breakers
+    cb_status = check_circuit_breakers()
+    if not cb_status["trading_allowed"]:
+        cb_reasons = "; ".join(cb_status["reasons"])
+        logger.warning("Circuit breaker halted for %s: %s", ticker, cb_reasons)
+        signal_id = log_signal(
+            ticker=ticker, strategy=strategy, timeframe=timeframe,
+            direction="N/A", confidence=0, entry_price=0, stop_loss=0,
+            take_profit=0, rr_ratio=0, reasoning="Circuit breaker halted",
+            confluences=[], warnings=cb_status["reasons"], key_risks="",
+            kelly_pct=None, position_size=None, passed_filter=False,
+            filter_reason=f"Circuit breaker: {cb_reasons}",
+        )
+        return {
+            "signal_id": signal_id, "ticker": ticker, "strategy": strategy,
+            "passed": False, "filter_reason": f"Circuit breaker: {cb_reasons}",
+            "analysis": None, "sizing": None, "order": None,
+        }
+
     # Step 1: Collect market data
     market = collect_market_data(ticker, timeframe)
 
@@ -95,8 +115,8 @@ def analyze_and_log(ticker: str, strategy: str, timeframe: str = "1d") -> dict:
             tp_dist = abs(adjusted["take_profit"] - analysis["entry"])
             analysis["riskRewardRatio"] = round(tp_dist / stop_dist, 2) if stop_dist > 0 else 0
 
-    # Step 4: Apply filters (with ATR validation)
-    passed, filter_reason = apply_filters(
+    # Step 4: Apply filters (with circuit breaker context)
+    passed, filter_reason, filter_ctx = apply_filters(
         ticker=ticker,
         confidence=analysis["confidence"],
         rr_ratio=analysis["riskRewardRatio"],
@@ -107,14 +127,30 @@ def analyze_and_log(ticker: str, strategy: str, timeframe: str = "1d") -> dict:
         stop_loss=analysis["stopLoss"],
     )
 
-    # Step 5: Position sizing (calculate even if filtered, for logging)
+    # Step 4b: Portfolio risk check (only if passed filter)
+    if passed:
+        from src.risk.portfolio_risk import check_portfolio_risk
+        port_check = check_portfolio_risk(
+            ticker=ticker,
+            direction=analysis["direction"],
+            dollar_risk=0,  # Will be computed after sizing; check direction/correlation/beta now
+        )
+        if not port_check["approved"]:
+            passed = False
+            filter_reason = f"Portfolio risk: {'; '.join(port_check['reasons'])}"
+            logger.info("Portfolio risk blocked %s: %s", ticker, filter_reason)
+
+    # Step 5: Position sizing (with Phase 2 multipliers)
     bankroll = get_bankroll()
+    cb_size_mult = filter_ctx.get("cb_size_multiplier", 1.0)
     sizing = size_position(
         confidence=analysis["confidence"],
         rr_ratio=analysis["riskRewardRatio"],
         bankroll=bankroll,
         entry_price=analysis["entry"],
         stop_loss=analysis["stopLoss"],
+        cb_size_multiplier=cb_size_mult,
+        strategy=strategy,
     )
 
     # Step 5b: Re-check position limit right before logging (prevents race condition
@@ -126,7 +162,7 @@ def analyze_and_log(ticker: str, strategy: str, timeframe: str = "1d") -> dict:
             passed = False
             filter_reason = f"Position limit reached during scan ({current_open}/{FILTERS['max_open_positions']})"
 
-    # Step 6: Log signal
+    # Step 6: Log signal (with sector and beta)
     signal_id = log_signal(
         ticker=ticker,
         strategy=strategy,
@@ -145,6 +181,8 @@ def analyze_and_log(ticker: str, strategy: str, timeframe: str = "1d") -> dict:
         position_size=sizing["dollar_risk"] if passed else None,
         passed_filter=passed,
         filter_reason=filter_reason,
+        sector=fund_data.get("sector", "Unknown"),
+        beta=fund_data.get("beta"),
     )
 
     # Step 7: Submit to Alpaca if enabled and signal passed
@@ -219,17 +257,31 @@ def run(ticker: str, strategy: str, timeframe: str):
     analysis = result["analysis"]
     sizing = result["sizing"]
 
+    # If circuit breaker halted, analysis will be None
+    if analysis is None:
+        console.print(Panel(
+            f"[bold red]CIRCUIT BREAKER[/bold red] — Trading halted\n"
+            f"Reason: {result['filter_reason']}\n"
+            f"[dim](Signal logged for tracking — no Claude analysis performed)[/dim]",
+            border_style="red",
+        ))
+        return
+
     # Display analysis
     _display_analysis(analysis)
 
     # Display result
     if result["passed"]:
+        mult_info = ""
+        if sizing.get("combined_multiplier", 1.0) < 1.0:
+            mult_info = f"\n[dim]Size multiplier: {sizing['combined_multiplier']:.2f}x[/dim]"
         console.print(Panel(
             f"[bold green]SIGNAL PASSED[/bold green] — ID #{result['signal_id']}\n"
             f"Direction: {analysis['direction']} | Confidence: {analysis['confidence']}%\n"
             f"Entry: ${analysis['entry']:.2f} | Stop: ${analysis['stopLoss']:.2f} | Target: ${analysis['takeProfit']:.2f}\n"
             f"Kelly: {sizing['kelly_pct']:.1f}% → Shrunk: {sizing['shrunk_kelly_pct']:.1f}% → Final: {sizing['final_risk_pct']:.1f}%\n"
-            f"Risk: ${sizing['dollar_risk']:.2f} | Shares: {sizing['shares']} | Position: ${sizing['position_value']:.2f}" +
+            f"Risk: ${sizing['dollar_risk']:.2f} | Shares: {sizing['shares']} | Position: ${sizing['position_value']:.2f}"
+            + mult_info +
             (f"\n[bold cyan]Alpaca order: {result['order']['order_id']}[/bold cyan]" if result.get("order", {}).get("success") else "") +
             (f"\n[yellow]Alpaca failed: {result['order']['error']}[/yellow]" if result.get("order") and not result["order"].get("success") else ""),
             border_style="green",

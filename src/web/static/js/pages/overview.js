@@ -40,6 +40,15 @@ async function renderOverview(container) {
                 </div>
             </div>
             <div class="quick-glance-card">
+                <div class="quick-glance-icon" id="qgCBIcon" style="background:var(--green-soft);color:var(--green)">
+                    <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </div>
+                <div class="quick-glance-text">
+                    <div class="quick-glance-label">Circuit Breakers</div>
+                    <div class="quick-glance-value" id="qgCircuitBreaker">--</div>
+                </div>
+            </div>
+            <div class="quick-glance-card">
                 <div class="quick-glance-icon" style="background:var(--green-soft);color:var(--green)">
                     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 </div>
@@ -75,9 +84,10 @@ async function renderOverview(container) {
     let fullEquityData = null;
 
     // Load all data
-    const [overview, equity, strategies, openTrades, portfolio, scheduler, alpaca, dailyPnl] = await Promise.all([
+    const [overview, equity, strategies, openTrades, portfolio, scheduler, alpaca, dailyPnl, circuitBreakers] = await Promise.all([
         API.overview(), API.equityCurve(), API.strategies(), API.openTrades(),
         API.portfolio(), API.schedulerStatus(), API.alpacaStatus(), API.dailyPnl(7),
+        API.circuitBreakers(),
     ]);
 
     // Hero KPIs
@@ -160,6 +170,29 @@ async function renderOverview(container) {
             document.getElementById('qgNextScan').textContent = next.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
         }
     }
+    // Circuit breaker status
+    if (circuitBreakers && circuitBreakers.status) {
+        const cb = circuitBreakers.status;
+        const qgCB = document.getElementById('qgCircuitBreaker');
+        const qgCBIcon = document.getElementById('qgCBIcon');
+        if (cb.trading_allowed) {
+            if (cb.size_multiplier < 1.0) {
+                qgCB.textContent = `Active (${(cb.size_multiplier * 100).toFixed(0)}%)`;
+                qgCB.style.color = 'var(--orange)';
+                qgCBIcon.style.background = 'var(--orange-soft)';
+                qgCBIcon.style.color = 'var(--orange)';
+            } else {
+                qgCB.textContent = 'All Clear';
+                qgCB.style.color = 'var(--green)';
+            }
+        } else {
+            qgCB.textContent = 'HALTED';
+            qgCB.style.color = 'var(--red)';
+            qgCBIcon.style.background = 'var(--red-soft)';
+            qgCBIcon.style.color = 'var(--red)';
+        }
+    }
+
     if (alpaca) {
         const qgConn = document.getElementById('qgConnection');
         if (!alpaca.enabled) { qgConn.textContent = 'Paper Mode'; qgConn.style.color = 'var(--text-tertiary)'; }

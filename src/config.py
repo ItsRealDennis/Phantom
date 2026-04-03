@@ -73,5 +73,56 @@ def is_crypto(symbol: str) -> bool:
     """Check if a symbol is crypto (contains / or -USD suffix)."""
     return "/" in symbol or symbol.endswith("-USD")
 
+# --- Phase 2: Circuit Breakers ---
+CIRCUIT_BREAKERS = {
+    "daily_loss_pause_pct": 0.03,       # 3% daily loss = pause all trading
+    "consecutive_loss_pause": 3,         # 3 consecutive losses = pause
+    "drawdown_tiers": [                  # (drawdown_pct, size_multiplier)
+        (0.05, 0.50),                    # 5% DD -> half size
+        (0.10, 0.25),                    # 10% DD -> quarter size
+        (0.15, 0.00),                    # 15% DD -> stop trading
+    ],
+    "vix_threshold": 30.0,              # VIX above 30 = reduce size by 50%
+    "vix_halt": 40.0,                   # VIX above 40 = stop trading
+    "rolling_win_rate_floor": 0.35,     # Below 35% win rate on last 20 = pause
+    "rolling_window": 20,               # Number of recent trades for rolling metrics
+}
+
+# --- Phase 2: Portfolio Risk ---
+PORTFOLIO_RISK = {
+    "max_correlated_positions": 3,       # Max positions with pairwise corr > threshold
+    "correlation_threshold": 0.70,       # Pearson correlation threshold
+    "correlation_lookback_days": 30,     # Days of price data for correlation
+    "max_portfolio_beta": 2.0,           # Total portfolio weighted beta cap
+    "max_same_direction": 4,             # Max positions in same direction
+    "max_total_risk_pct": 0.06,          # 6% of bankroll at risk across all positions
+}
+
+# --- Phase 2: Position Sizer v2 ---
+POSITION_SIZER_V2 = {
+    "drawdown_scale": [                  # (drawdown_pct, multiplier)
+        (0.00, 1.00),
+        (0.05, 0.50),
+        (0.10, 0.25),
+    ],
+    "vix_scale_threshold": 20.0,         # Above this VIX, start scaling down
+    "vix_scale_factor": 0.02,            # Reduce size by 2% per VIX point above threshold
+    "strategy_decay_enabled": True,      # Enable strategy confidence decay
+}
+
+# --- Phase 2: Strategy Max Hold Times (hours) ---
+STRATEGY_MAX_HOLD = {
+    "mean_reversion": 8,
+    "breakout": 48,
+    "momentum": 72,
+    "earnings_play": 24,
+}
+
+# --- Phase 2: Filter Validation ---
+FILTER_VALIDATION = {
+    "enabled": True,
+    "alert_negative_alpha": True,        # Alert if filter alpha goes negative
+}
+
 # Web
 WEB_PORT = int(os.environ.get("PORT", "8000"))

@@ -16,9 +16,10 @@ from src.tracking.analytics import (
     get_detailed_strategy_breakdown,
     get_risk_metrics,
     get_daily_pnl_series,
+    get_rolling_strategy_metrics,
 )
-from src.tracking.trade_logger import get_open_trades, get_signal_by_id
-from src.risk.portfolio_risk import get_portfolio_summary
+from src.tracking.trade_logger import get_open_trades, get_signal_by_id, get_connection
+from src.risk.portfolio_risk import get_portfolio_summary, get_sector_exposure
 from src.automation.scheduler import get_scheduler_status
 from src.automation.scanner import run_scan_cycle, run_crypto_scan
 from src.execution.order_sync import sync_all_open_trades
@@ -123,6 +124,103 @@ def api_portfolio():
 @router.get("/api/filter-validation")
 def api_filter_validation():
     return get_filtered_outcomes()
+
+
+# --- Phase 2 endpoints ---
+
+@router.get("/api/circuit-breakers")
+def api_circuit_breakers():
+    """Current circuit breaker status + active events."""
+    from src.risk.circuit_breakers import check_circuit_breakers, get_active_breakers
+    return {
+        "status": check_circuit_breakers(),
+        "active_events": get_active_breakers(),
+    }
+
+
+@router.post("/api/circuit-breakers/{breaker_id}/resume")
+def api_resume_breaker(breaker_id: int):
+    """Manually resume a tripped circuit breaker."""
+    from src.risk.circuit_breakers import resume_breaker
+    resume_breaker(breaker_id)
+    return {"status": "resumed", "id": breaker_id}
+
+
+@router.get("/api/risk/portfolio-detail")
+def api_portfolio_risk_detail():
+    """Full portfolio risk dashboard data: sectors, beta, direction, total risk."""
+    from src.risk.portfolio_risk import check_portfolio_risk
+    summary = get_portfolio_summary()
+    sectors = get_sector_exposure()
+
+    # Direction balance
+    conn = get_connection()
+    direction_rows = conn.execute(
+        """
+        SELECT direction, COUNT(*) as cnt, COALESCE(SUM(position_size), 0) as exposure
+        FROM signals WHERE status = 'open' AND passed_filter = 1
+        GROUP BY direction
+        """
+    ).fetchall()
+    conn.close()
+    direction_balance = {r["direction"]: {"count": r["cnt"], "exposure": round(r["exposure"], 2)} for r in direction_rows}
+
+    return {
+        "summary": summary,
+        "sector_exposure": sectors,
+        "direction_balance": direction_balance,
+    }
+
+
+@router.get("/api/strategies/health")
+def api_strategy_health():
+    """Rolling strategy metrics + health status."""
+    return get_rolling_strategy_metrics()
+
+
+@router.get("/api/filter-validation/detailed")
+def api_filter_validation_detailed():
+    """Detailed filter validation with per-reason breakdown + alpha."""
+    from src.tracking.filter_validation import get_filter_alpha, get_filter_validation_detail
+    return {
+        "alpha": get_filter_alpha(),
+        "detail": get_filter_validation_detail(),
+    }
+
+
+@router.get("/api/open-trades/live")
+def api_open_trades_live():
+    """Open positions with live P&L computed from current prices."""
+    from src.automation.settler import get_current_price
+    trades = get_open_trades()
+    for t in trades:
+        if t.get("passed_filter"):
+            try:
+                price = get_current_price(t["ticker"])
+                risk_per_share = abs(t["entry_price"] - t["stop_loss"])
+                shares = int(t["position_size"] / risk_per_share) if risk_per_share > 0 and t["position_size"] else 0
+                if t["direction"] == "LONG":
+                    t["live_pnl"] = round(shares * (price - t["entry_price"]), 2)
+                else:
+                    t["live_pnl"] = round(shares * (t["entry_price"] - price), 2)
+                t["current_price"] = round(price, 2)
+            except Exception:
+                t["live_pnl"] = None
+                t["current_price"] = None
+    return trades
+
+
+@router.get("/api/snapshots")
+def api_snapshots(days: int = Query(default=30, ge=1, le=365)):
+    """Daily snapshots for trend analysis."""
+    from datetime import datetime, timedelta
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM daily_snapshots WHERE date >= ? ORDER BY date", (cutoff,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 @router.get("/api/scheduler/status")

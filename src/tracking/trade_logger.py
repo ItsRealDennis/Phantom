@@ -68,8 +68,9 @@ def init_db():
     """)
     conn.close()
 
-    # Run migration for Alpaca columns
+    # Run migrations
     _migrate_alpaca_columns()
+    _migrate_phase2_columns()
 
 
 def _migrate_alpaca_columns():
@@ -94,6 +95,64 @@ def _migrate_alpaca_columns():
     conn.close()
 
 
+def _migrate_phase2_columns():
+    """Add Phase 2 columns and tables. Idempotent."""
+    conn = get_connection()
+
+    # New columns on signals table
+    new_columns = [
+        ("max_adverse_excursion", "REAL"),
+        ("max_favorable_excursion", "REAL"),
+        ("high_water_mark", "REAL"),
+        ("settlement_method", "TEXT"),
+        ("settlement_price", "REAL"),
+        ("bars_held", "INTEGER"),
+        ("sector", "TEXT DEFAULT 'Unknown'"),
+        ("beta", "REAL"),
+    ]
+    for col_name, col_type in new_columns:
+        try:
+            conn.execute(f"ALTER TABLE signals ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+    # Circuit breaker log table
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS circuit_breaker_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            triggered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            breaker_type TEXT NOT NULL,
+            trigger_value REAL,
+            threshold REAL,
+            action_taken TEXT NOT NULL,
+            resumed_at TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_cb_type ON circuit_breaker_log(breaker_type);
+        CREATE INDEX IF NOT EXISTS idx_cb_triggered ON circuit_breaker_log(triggered_at);
+
+        CREATE TABLE IF NOT EXISTS daily_snapshots (
+            date TEXT PRIMARY KEY,
+            bankroll REAL,
+            peak_bankroll REAL,
+            drawdown_pct REAL,
+            signals_generated INTEGER DEFAULT 0,
+            signals_passed INTEGER DEFAULT 0,
+            signals_filtered INTEGER DEFAULT 0,
+            trades_settled INTEGER DEFAULT 0,
+            wins INTEGER DEFAULT 0,
+            losses INTEGER DEFAULT 0,
+            daily_pnl REAL DEFAULT 0.0,
+            cumulative_pnl REAL DEFAULT 0.0,
+            open_positions INTEGER DEFAULT 0,
+            total_risk_pct REAL DEFAULT 0.0,
+            vix_close REAL
+        );
+    """)
+
+    conn.commit()
+    conn.close()
+
+
 def log_signal(
     ticker: str,
     strategy: str,
@@ -112,6 +171,8 @@ def log_signal(
     position_size: float | None,
     passed_filter: bool,
     filter_reason: str | None = None,
+    sector: str = "Unknown",
+    beta: float | None = None,
 ) -> int:
     """Log a signal to the database. Returns the signal ID."""
     conn = get_connection()
@@ -122,8 +183,8 @@ def log_signal(
             entry_price, stop_loss, take_profit, rr_ratio,
             reasoning, confluences, warnings, key_risks,
             kelly_pct, position_size, passed_filter, filter_reason,
-            status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            status, sector, beta
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             ticker.upper(),
@@ -144,6 +205,8 @@ def log_signal(
             passed_filter,
             filter_reason,
             "open" if passed_filter else "filtered",
+            sector,
+            beta,
         ),
     )
     signal_id = cursor.lastrowid
@@ -152,29 +215,36 @@ def log_signal(
     return signal_id
 
 
-def settle_trade(signal_id: int, status: str, real_pnl: float, notes: str = "", exit_price: float | None = None):
+def settle_trade(
+    signal_id: int,
+    status: str,
+    real_pnl: float,
+    notes: str = "",
+    exit_price: float | None = None,
+    settlement_method: str | None = None,
+    settlement_price: float | None = None,
+    bars_held: int | None = None,
+):
     """Mark a trade as won/lost/stopped/expired/canceled/rejected."""
     valid = ("won", "lost", "stopped", "expired", "canceled", "rejected")
     assert status in valid, f"Invalid status: {status}. Must be one of {valid}"
     conn = get_connection()
-    if exit_price is not None:
-        conn.execute(
-            """
-            UPDATE signals
-            SET status = ?, settled_at = ?, real_pnl = ?, notes = ?, exit_price = ?
-            WHERE id = ? AND status = 'open'
-            """,
-            (status, datetime.now().isoformat(), real_pnl, notes, exit_price, signal_id),
-        )
-    else:
-        conn.execute(
-            """
-            UPDATE signals
-            SET status = ?, settled_at = ?, real_pnl = ?, notes = ?
-            WHERE id = ? AND status = 'open'
-            """,
-            (status, datetime.now().isoformat(), real_pnl, notes, signal_id),
-        )
+    conn.execute(
+        """
+        UPDATE signals
+        SET status = ?, settled_at = ?, real_pnl = ?, notes = ?,
+            exit_price = COALESCE(?, exit_price),
+            settlement_method = COALESCE(?, settlement_method),
+            settlement_price = COALESCE(?, settlement_price),
+            bars_held = COALESCE(?, bars_held)
+        WHERE id = ? AND status = 'open'
+        """,
+        (
+            status, datetime.now().isoformat(), real_pnl, notes,
+            exit_price, settlement_method, settlement_price, bars_held,
+            signal_id,
+        ),
+    )
     conn.commit()
     conn.close()
 
@@ -334,6 +404,64 @@ def get_signal_by_id(signal_id: int) -> dict | None:
     row = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def update_mae_mfe(signal_id: int, mae: float, mfe: float, hwm: float):
+    """Update MAE/MFE/high-water-mark for a trade. Only updates if more extreme."""
+    conn = get_connection()
+    conn.execute(
+        """
+        UPDATE signals
+        SET max_adverse_excursion = CASE
+                WHEN max_adverse_excursion IS NULL THEN ?
+                WHEN ? > max_adverse_excursion THEN ?
+                ELSE max_adverse_excursion
+            END,
+            max_favorable_excursion = CASE
+                WHEN max_favorable_excursion IS NULL THEN ?
+                WHEN ? > max_favorable_excursion THEN ?
+                ELSE max_favorable_excursion
+            END,
+            high_water_mark = CASE
+                WHEN high_water_mark IS NULL THEN ?
+                WHEN ? > high_water_mark THEN ?
+                ELSE high_water_mark
+            END
+        WHERE id = ?
+        """,
+        (mae, mae, mae, mfe, mfe, mfe, hwm, hwm, hwm, signal_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_filtered_signals() -> list[dict]:
+    """Get signals that were filtered out but still need outcome tracking."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT * FROM signals
+        WHERE status = 'filtered'
+        ORDER BY created_at DESC"""
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def settle_filtered_trade(signal_id: int, status: str, hypothetical_pnl: float, notes: str = ""):
+    """Settle a filtered signal for validation tracking. Uses filtered_won/filtered_lost status."""
+    valid = ("filtered_won", "filtered_lost")
+    assert status in valid, f"Invalid filtered status: {status}. Must be one of {valid}"
+    conn = get_connection()
+    conn.execute(
+        """
+        UPDATE signals
+        SET status = ?, settled_at = ?, real_pnl = ?, notes = ?
+        WHERE id = ? AND status = 'filtered'
+        """,
+        (status, datetime.now().isoformat(), hypothetical_pnl, notes, signal_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 # Initialize DB on import

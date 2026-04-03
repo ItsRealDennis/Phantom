@@ -1,9 +1,12 @@
-"""Analytics — win rate, ROI, edge by strategy, equity curve."""
+"""Analytics — win rate, ROI, edge by strategy, equity curve, strategy health."""
 
+import logging
 from datetime import datetime, timedelta
 
 from src.tracking.trade_logger import get_connection
 from src.config import STARTING_BANKROLL
+
+logger = logging.getLogger(__name__)
 
 
 def get_overall_stats() -> dict:
@@ -341,3 +344,220 @@ def get_daily_pnl_series(days: int = 7) -> list[dict]:
     """, (cutoff,)).fetchall()
     conn.close()
     return [{"date": r["date"], "pnl": round(r["pnl"], 2)} for r in rows]
+
+
+# --- Phase 2: Rolling strategy metrics & daily snapshots ---
+
+def get_rolling_strategy_metrics(window: int = 20) -> list[dict]:
+    """
+    Per-strategy rolling metrics over last N settled trades.
+    Returns health status: ACTIVE / WARNING / REVIEW.
+    """
+    conn = get_connection()
+    strategies = conn.execute(
+        "SELECT DISTINCT strategy FROM signals WHERE passed_filter = 1"
+    ).fetchall()
+
+    results = []
+    for row in strategies:
+        strat = row["strategy"]
+
+        # All-time stats
+        all_time = conn.execute(
+            """
+            SELECT COUNT(*) as total,
+                   SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as wins,
+                   COALESCE(SUM(CASE WHEN status IN ('won','lost','stopped') THEN real_pnl ELSE 0 END), 0) as pnl
+            FROM signals
+            WHERE strategy = ? AND status IN ('won', 'lost', 'stopped') AND passed_filter = 1
+            """,
+            (strat,),
+        ).fetchone()
+
+        # Rolling stats (last N)
+        recent = conn.execute(
+            """
+            SELECT status, real_pnl, rr_ratio FROM signals
+            WHERE strategy = ? AND status IN ('won', 'lost', 'stopped') AND passed_filter = 1
+            ORDER BY settled_at DESC
+            LIMIT ?
+            """,
+            (strat, window),
+        ).fetchall()
+
+        all_total = all_time["total"] or 0
+        all_wins = all_time["wins"] or 0
+        all_wr = (all_wins / all_total) if all_total > 0 else 0
+
+        rolling_total = len(recent)
+        rolling_wins = sum(1 for r in recent if r["status"] == "won")
+        rolling_wr = (rolling_wins / rolling_total) if rolling_total > 0 else 0
+        rolling_pnl = sum(r["real_pnl"] or 0 for r in recent)
+        rolling_avg_rr = (
+            sum(r["rr_ratio"] or 0 for r in recent) / rolling_total
+            if rolling_total > 0 else 0
+        )
+
+        # Health status
+        if rolling_total < 10:
+            health = "ACTIVE"  # Not enough data to judge
+        elif all_wr == 0:
+            health = "ACTIVE"
+        else:
+            ratio = rolling_wr / all_wr
+            if ratio >= 0.8:
+                health = "ACTIVE"
+            elif ratio >= 0.6:
+                health = "WARNING"
+            else:
+                health = "REVIEW"
+
+        # Also flag if rolling win rate is absolutely low
+        if rolling_total >= 10 and rolling_wr < 0.30:
+            health = "REVIEW"
+
+        results.append({
+            "strategy": strat,
+            "window": window,
+            "all_time_total": all_total,
+            "all_time_win_rate": round(all_wr * 100, 1),
+            "all_time_pnl": round(all_time["pnl"], 2),
+            "rolling_total": rolling_total,
+            "rolling_win_rate": round(rolling_wr * 100, 1),
+            "rolling_pnl": round(rolling_pnl, 2),
+            "rolling_avg_rr": round(rolling_avg_rr, 2),
+            "health_status": health,
+        })
+
+    conn.close()
+    return results
+
+
+def get_peak_bankroll() -> float:
+    """Return the highest bankroll value ever recorded."""
+    conn = get_connection()
+
+    # Try daily_snapshots first
+    row = conn.execute(
+        "SELECT MAX(peak_bankroll) as peak FROM daily_snapshots"
+    ).fetchone()
+    if row and row["peak"]:
+        conn.close()
+        return row["peak"]
+
+    # Fallback: compute from equity curve
+    rows = conn.execute(
+        """
+        SELECT real_pnl FROM signals
+        WHERE status IN ('won', 'lost', 'stopped') AND passed_filter = 1
+        ORDER BY settled_at ASC
+        """
+    ).fetchall()
+    conn.close()
+
+    running = STARTING_BANKROLL
+    peak = STARTING_BANKROLL
+    for r in rows:
+        running += (r["real_pnl"] or 0)
+        peak = max(peak, running)
+    return peak
+
+
+def record_daily_snapshot():
+    """Insert/update today's daily_snapshot row. Called by scheduler at EOD."""
+    from src.tracking.trade_logger import get_bankroll
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    conn = get_connection()
+
+    bankroll = get_bankroll()
+    peak = get_peak_bankroll()
+    peak = max(peak, bankroll)
+    dd_pct = (peak - bankroll) / peak if peak > 0 else 0
+
+    # Today's signal counts
+    counts = conn.execute(
+        """
+        SELECT
+            COUNT(*) as generated,
+            SUM(CASE WHEN passed_filter = 1 THEN 1 ELSE 0 END) as passed,
+            SUM(CASE WHEN passed_filter = 0 THEN 1 ELSE 0 END) as filtered
+        FROM signals
+        WHERE DATE(created_at) = ?
+        """,
+        (today,),
+    ).fetchone()
+
+    # Today's settlement counts
+    settlements = conn.execute(
+        """
+        SELECT
+            COUNT(*) as settled,
+            SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN status IN ('lost', 'stopped') THEN 1 ELSE 0 END) as losses,
+            COALESCE(SUM(real_pnl), 0) as daily_pnl
+        FROM signals
+        WHERE DATE(settled_at) = ? AND status IN ('won', 'lost', 'stopped')
+        """,
+        (today,),
+    ).fetchone()
+
+    # Cumulative P&L
+    cum = conn.execute(
+        "SELECT COALESCE(SUM(real_pnl), 0) as total FROM signals WHERE status IN ('won', 'lost', 'stopped')"
+    ).fetchone()
+
+    # Open positions
+    open_count = conn.execute(
+        "SELECT COUNT(*) as cnt FROM signals WHERE status = 'open' AND passed_filter = 1"
+    ).fetchone()["cnt"]
+
+    # Total risk
+    total_risk = conn.execute(
+        "SELECT COALESCE(SUM(position_size), 0) as risk FROM signals WHERE status = 'open' AND passed_filter = 1"
+    ).fetchone()["risk"]
+    risk_pct = total_risk / bankroll if bankroll > 0 else 0
+
+    # VIX
+    vix = None
+    try:
+        from src.risk.circuit_breakers import get_vix_price
+        vix = get_vix_price()
+    except Exception:
+        pass
+
+    conn.execute(
+        """
+        INSERT INTO daily_snapshots (
+            date, bankroll, peak_bankroll, drawdown_pct,
+            signals_generated, signals_passed, signals_filtered,
+            trades_settled, wins, losses, daily_pnl, cumulative_pnl,
+            open_positions, total_risk_pct, vix_close
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date) DO UPDATE SET
+            bankroll = excluded.bankroll,
+            peak_bankroll = excluded.peak_bankroll,
+            drawdown_pct = excluded.drawdown_pct,
+            signals_generated = excluded.signals_generated,
+            signals_passed = excluded.signals_passed,
+            signals_filtered = excluded.signals_filtered,
+            trades_settled = excluded.trades_settled,
+            wins = excluded.wins,
+            losses = excluded.losses,
+            daily_pnl = excluded.daily_pnl,
+            cumulative_pnl = excluded.cumulative_pnl,
+            open_positions = excluded.open_positions,
+            total_risk_pct = excluded.total_risk_pct,
+            vix_close = excluded.vix_close
+        """,
+        (
+            today, round(bankroll, 2), round(peak, 2), round(dd_pct, 4),
+            counts["generated"] or 0, counts["passed"] or 0, counts["filtered"] or 0,
+            settlements["settled"] or 0, settlements["wins"] or 0, settlements["losses"] or 0,
+            round(settlements["daily_pnl"], 2), round(cum["total"], 2),
+            open_count, round(risk_pct, 4), vix,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    logger.info("Daily snapshot recorded for %s — bankroll: $%.2f, DD: %.1f%%", today, bankroll, dd_pct * 100)

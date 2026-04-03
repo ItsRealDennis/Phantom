@@ -9,6 +9,8 @@ from src.automation.scanner import run_scan_cycle, run_crypto_scan
 from src.automation.settler import auto_settle_open_trades
 from src.execution.order_sync import sync_alpaca_orders, sync_all_open_trades
 from src.execution.alpaca_client import is_alpaca_enabled
+from src.tracking.filter_validation import settle_filtered_signals
+from src.tracking.analytics import record_daily_snapshot
 from src.config import CRYPTO_ENABLED
 
 logger = logging.getLogger(__name__)
@@ -70,6 +72,37 @@ def start_scheduler():
         max_instances=1,
         replace_existing=True,
     )
+
+    # Filter validation settlement: every 10 min (same cadence as paper settlement)
+    scheduler.add_job(
+        settle_filtered_signals,
+        CronTrigger(minute="*/10"),
+        id="filter_validation",
+        name="Filter validation settlement",
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    # Daily snapshot: weekdays at 4:10 PM ET
+    scheduler.add_job(
+        record_daily_snapshot,
+        CronTrigger(day_of_week="mon-fri", hour=16, minute=10, timezone="US/Eastern"),
+        id="daily_snapshot",
+        name="Daily snapshot recording",
+        max_instances=1,
+        replace_existing=True,
+    )
+
+    # Crypto daily snapshot: midnight UTC (crypto has no close)
+    if CRYPTO_ENABLED:
+        scheduler.add_job(
+            record_daily_snapshot,
+            CronTrigger(hour=0, minute=5),
+            id="daily_snapshot_crypto",
+            name="Crypto daily snapshot",
+            max_instances=1,
+            replace_existing=True,
+        )
 
     scheduler.start()
     logger.info("Scheduler started with %d jobs", len(scheduler.get_jobs()))
