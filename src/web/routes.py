@@ -12,8 +12,12 @@ from src.tracking.analytics import (
     get_equity_curve,
     get_filtered_outcomes,
     get_recent_signals,
+    get_paginated_signals,
+    get_detailed_strategy_breakdown,
+    get_risk_metrics,
+    get_daily_pnl_series,
 )
-from src.tracking.trade_logger import get_open_trades
+from src.tracking.trade_logger import get_open_trades, get_signal_by_id
 from src.risk.portfolio_risk import get_portfolio_summary
 from src.automation.scheduler import get_scheduler_status
 from src.automation.scanner import run_scan_cycle
@@ -37,6 +41,12 @@ def health():
 
 @router.get("/", response_class=HTMLResponse)
 def dashboard():
+    html_file = TEMPLATES_DIR / "index.html"
+    return HTMLResponse(content=html_file.read_text())
+
+
+@router.get("/legacy", response_class=HTMLResponse)
+def legacy_dashboard():
     html_file = TEMPLATES_DIR / "dashboard.html"
     return HTMLResponse(content=html_file.read_text())
 
@@ -56,6 +66,43 @@ def api_strategies():
 @router.get("/api/signals")
 def api_signals(limit: int = Query(default=20, ge=1, le=200)):
     return get_recent_signals(limit)
+
+
+@router.get("/api/signals/paginated")
+def api_signals_paginated(
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=25, ge=1, le=100),
+    sort_by: str = Query(default="created_at"),
+    sort_dir: str = Query(default="desc"),
+    strategy: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    direction: str | None = Query(default=None),
+    ticker: str | None = Query(default=None),
+):
+    return get_paginated_signals(offset, limit, sort_by, sort_dir, strategy, status, direction, ticker)
+
+
+@router.get("/api/signals/{signal_id}")
+def api_signal_detail(signal_id: int):
+    signal = get_signal_by_id(signal_id)
+    if not signal:
+        return JSONResponse(status_code=404, content={"error": "Signal not found"})
+    return signal
+
+
+@router.get("/api/strategies/detailed")
+def api_strategies_detailed():
+    return get_detailed_strategy_breakdown()
+
+
+@router.get("/api/risk/metrics")
+def api_risk_metrics():
+    return get_risk_metrics()
+
+
+@router.get("/api/daily-pnl")
+def api_daily_pnl(days: int = Query(default=7, ge=1, le=90)):
+    return get_daily_pnl_series(days)
 
 
 @router.get("/api/open-trades")

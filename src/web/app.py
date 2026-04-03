@@ -31,4 +31,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Serve static CSS/JS files
+app.mount("/static", StaticFiles(directory="src/web/static"), name="static")
+
 app.include_router(router)

@@ -328,5 +328,13 @@ def get_bankroll() -> float:
     return STARTING_BANKROLL + row["total_pnl"]
 
 
+def get_signal_by_id(signal_id: int) -> dict | None:
+    """Get a single signal by ID with full details."""
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 # Initialize DB on import
 init_db()

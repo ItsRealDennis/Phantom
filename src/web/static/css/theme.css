@@ -1,0 +1,105 @@
+/* ============================================
+   Phantom — Design System & Base Styles
+   ============================================ */
+
+:root {
+    --bg: #000000;
+    --bg-raised: #0a0a0a;
+    --bg-card: #111111;
+    --bg-card-hover: #161616;
+    --bg-subtle: #0d0d0d;
+    --border: rgba(255,255,255,0.06);
+    --border-hover: rgba(255,255,255,0.1);
+    --text-primary: #f5f5f7;
+    --text-secondary: rgba(255,255,255,0.55);
+    --text-tertiary: rgba(255,255,255,0.3);
+    --accent: #0a84ff;
+    --accent-soft: rgba(10,132,255,0.12);
+    --green: #30d158;
+    --green-soft: rgba(48,209,88,0.12);
+    --red: #ff453a;
+    --red-soft: rgba(255,69,58,0.12);
+    --orange: #ff9f0a;
+    --orange-soft: rgba(255,159,10,0.12);
+    --purple: #bf5af2;
+    --purple-soft: rgba(191,90,242,0.12);
+    --cyan: #64d2ff;
+    --cyan-soft: rgba(100,210,255,0.12);
+    --radius: 16px;
+    --radius-sm: 10px;
+    --radius-xs: 6px;
+    --sidebar-width: 64px;
+    --sidebar-expanded: 220px;
+    --topbar-height: 48px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* Color utilities */
+.c-green { color: var(--green); }
+.c-red { color: var(--red); }
+.c-orange { color: var(--orange); }
+.c-accent { color: var(--accent); }
+.c-purple { color: var(--purple); }
+.c-muted { color: var(--text-tertiary); }
+.c-secondary { color: var(--text-secondary); }
+.c-primary { color: var(--text-primary); }
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideOutRight {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(100%); opacity: 0; }
+}
+
+@keyframes progressShrink {
+    from { width: 100%; }
+    to { width: 0%; }
+}
+
+.loading {
+    background: linear-gradient(90deg, var(--bg-card) 25%, rgba(255,255,255,0.04) 50%, var(--bg-card) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: var(--radius-sm);
+    height: 120px;
+}
+
+.page-enter {
+    animation: fadeIn 0.2s ease-out;
+}

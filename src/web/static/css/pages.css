@@ -1,0 +1,344 @@
+/* ============================================
+   Phantom — Page-Specific Styles
+   ============================================ */
+
+/* ---- Overview ---- */
+.quick-glance {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.quick-glance-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.quick-glance-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-xs);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.quick-glance-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.5;
+}
+.quick-glance-text {
+    flex: 1;
+    min-width: 0;
+}
+.quick-glance-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.quick-glance-value {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.equity-controls {
+    display: flex;
+    gap: 4px;
+    padding: 8px 24px 0;
+}
+.equity-range-btn {
+    padding: 4px 12px;
+    border-radius: 980px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.equity-range-btn:hover { color: var(--text-secondary); }
+.equity-range-btn.active {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-primary);
+}
+
+/* Sparkline */
+.sparkline-container {
+    width: 80px;
+    height: 24px;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+/* ---- Trade Detail ---- */
+.trade-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+.trade-ticker {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -1px;
+}
+.trade-badges {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.trade-pnl {
+    margin-left: auto;
+    text-align: right;
+}
+.trade-pnl-value {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+}
+.trade-pnl-label {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+.analysis-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 16px;
+}
+.analysis-card-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 16px;
+}
+.analysis-reasoning {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+.analysis-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.risk-card {
+    background: var(--red-soft);
+    border: 1px solid rgba(255,69,58,0.15);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+}
+.risk-card-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--red);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+.risk-card-text {
+    font-size: 14px;
+    line-height: 1.5;
+    color: rgba(255,255,255,0.7);
+}
+
+.metadata-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 16px;
+}
+.metadata-item {
+    padding: 12px 0;
+}
+.metadata-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 4px;
+}
+.metadata-value {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* ---- Strategy Lab ---- */
+.strategy-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+.strategy-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    transition: border-color 0.2s, transform 0.15s;
+}
+.strategy-card:hover { border-color: var(--border-hover); transform: translateY(-1px); }
+.strategy-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+.strategy-card-name {
+    font-size: 16px;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+.strategy-card-pnl {
+    font-size: 18px;
+    font-weight: 600;
+}
+.strategy-card-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.strategy-card-stat-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+.strategy-card-stat-value {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* ---- Risk page ---- */
+.risk-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.risk-metric-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 20px;
+    text-align: center;
+}
+.risk-metric-value {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+.risk-metric-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.exposure-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.exposure-bar-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    min-width: 120px;
+}
+.exposure-bar-track {
+    flex: 1;
+    height: 8px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.exposure-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+.exposure-bar-value {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    min-width: 60px;
+    text-align: right;
+}
+
+/* ---- Settings page ---- */
+.config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+}
+.config-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: rgba(255,255,255,0.02);
+    border-radius: var(--radius-xs);
+}
+.config-key {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.config-value {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+/* Back button */
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 20px;
+    transition: opacity 0.15s;
+}
+.back-link:hover { opacity: 0.8; }
+.back-link svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+}
+
+@media (max-width: 960px) {
+    .quick-glance { grid-template-columns: 1fr; }
+    .trade-header { flex-direction: column; align-items: flex-start; }
+    .trade-pnl { margin-left: 0; text-align: left; }
+    .strategy-cards { grid-template-columns: 1fr; }
+    .risk-metrics-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+    .risk-metrics-grid { grid-template-columns: 1fr; }
+    .metadata-grid { grid-template-columns: 1fr 1fr; }
+}
