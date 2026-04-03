@@ -18,31 +18,31 @@ scheduler = BackgroundScheduler()
 def start_scheduler():
     """Register all jobs and start the scheduler."""
 
-    # Scan job: weekdays at 10:00 AM and 2:00 PM ET
+    # Scan job: weekdays every 30 min during market hours (9:30-15:30 ET)
     scheduler.add_job(
         run_scan_cycle,
-        CronTrigger(day_of_week="mon-fri", hour="10,14", minute=0, timezone="US/Eastern"),
+        CronTrigger(day_of_week="mon-fri", hour="9-15", minute="0,30", timezone="US/Eastern"),
         id="scan_cycle",
         name="Market scan + analyze",
         max_instances=1,
         replace_existing=True,
     )
 
-    # Alpaca order sync: every 5 min during market hours (if enabled)
+    # Alpaca order sync: every 2 min during market hours (if enabled)
     if is_alpaca_enabled():
         scheduler.add_job(
             sync_alpaca_orders,
-            CronTrigger(day_of_week="mon-fri", hour="9-15", minute="*/5", timezone="US/Eastern"),
+            CronTrigger(day_of_week="mon-fri", hour="9-15", minute="*/2", timezone="US/Eastern"),
             id="alpaca_sync",
             name="Alpaca order sync",
             max_instances=1,
             replace_existing=True,
         )
 
-    # Paper settlement: weekdays every 30 min during market hours
+    # Paper settlement: weekdays every 10 min during market hours
     scheduler.add_job(
         auto_settle_open_trades,
-        CronTrigger(day_of_week="mon-fri", hour="9-15", minute="0,30", timezone="US/Eastern"),
+        CronTrigger(day_of_week="mon-fri", hour="9-15", minute="*/10", timezone="US/Eastern"),
         id="paper_settle",
         name="Paper trade settlement",
         max_instances=1,

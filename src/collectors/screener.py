@@ -7,8 +7,13 @@ from src.collectors.market_data import fetch_ohlcv
 
 # Default watchlist — common liquid tickers
 DEFAULT_WATCHLIST = [
+    # Mega caps
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
-    "AMD", "SPY", "QQQ", "IWM", "NFLX", "CRM", "ORCL", "AVGO",
+    # High-vol tech
+    "AMD", "NFLX", "CRM", "ORCL", "AVGO", "COIN", "MARA", "SMCI",
+    "PLTR", "SOFI", "RIVN", "LCID", "NIO", "SNAP", "ROKU", "SQ",
+    # ETFs
+    "SPY", "QQQ", "IWM", "SOXL", "TQQQ",
 ]
 
 
@@ -27,7 +32,7 @@ def screen_mean_reversion(watchlist: list[str] | None = None, timeframe: str = "
             sma20 = df["Close"].tail(20).mean()
             deviation = ((close - sma20) / sma20) * 100
 
-            if abs(deviation) > 3:  # >3% from SMA20
+            if abs(deviation) > 1.5:  # >1.5% from SMA20 (intraday-friendly)
                 setups.append({
                     "ticker": ticker,
                     "strategy": "mean_reversion",
@@ -64,7 +69,7 @@ def screen_breakout(watchlist: list[str] | None = None, timeframe: str = "1d") -
             pct_from_high = ((high_20 - close) / high_20) * 100
             pct_from_low = ((close - low_20) / low_20) * 100
 
-            if pct_from_high < 1.0 and vol_ratio > 1.2:
+            if pct_from_high < 2.0 and vol_ratio > 1.0:
                 setups.append({
                     "ticker": ticker,
                     "strategy": "breakout",
@@ -74,7 +79,7 @@ def screen_breakout(watchlist: list[str] | None = None, timeframe: str = "1d") -
                     "pct_from_level": round(pct_from_high, 2),
                     "vol_ratio": round(vol_ratio, 2),
                 })
-            elif pct_from_low < 1.0 and vol_ratio > 1.2:
+            elif pct_from_low < 2.0 and vol_ratio > 1.0:
                 setups.append({
                     "ticker": ticker,
                     "strategy": "breakout",
@@ -115,7 +120,7 @@ def screen_momentum(watchlist: list[str] | None = None, timeframe: str = "1d") -
                 pullback = 0
 
             # Strong momentum with a small pullback = entry opportunity
-            if momentum_10d > 5 and -3 < pullback < 0:
+            if momentum_10d > 2 and -3 < pullback < 0:
                 setups.append({
                     "ticker": ticker,
                     "strategy": "momentum",
@@ -124,7 +129,7 @@ def screen_momentum(watchlist: list[str] | None = None, timeframe: str = "1d") -
                     "momentum_10d": round(momentum_10d, 2),
                     "pullback_pct": round(pullback, 2),
                 })
-            elif momentum_10d < -5 and 0 < pullback < 3:
+            elif momentum_10d < -2 and 0 < pullback < 3:
                 setups.append({
                     "ticker": ticker,
                     "strategy": "momentum",
