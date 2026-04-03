@@ -3,7 +3,7 @@
 import logging
 import time
 
-from src.collectors.screener import screen_mean_reversion, screen_breakout, screen_momentum
+from src.collectors.screener import screen_mean_reversion, screen_breakout, screen_momentum, screen_crypto
 from src.orchestrator import analyze_and_log
 from src.config import SCAN_WATCHLIST, SCAN_TIMEFRAME, MAX_SIGNALS_PER_CYCLE
 
@@ -76,6 +76,46 @@ def run_scan_cycle(
         "Scan cycle complete — %d setups analyzed, %d passed filters",
         len(results),
         sum(1 for r in results if r["passed"]),
+    )
+
+    return results
+
+
+def run_crypto_scan(timeframe: str | None = None) -> list[dict]:
+    """Run crypto screener and analyze hits via Claude. Runs 24/7."""
+    tf = timeframe or SCAN_TIMEFRAME
+
+    logger.info("Crypto scan starting — timeframe: %s", tf)
+
+    crypto_setups = screen_crypto(timeframe=tf)
+    if not crypto_setups:
+        logger.info("Crypto scan complete — no setups found")
+        return []
+
+    logger.info("Crypto screener found %d setups (cap: %d)", len(crypto_setups), MAX_SIGNALS_PER_CYCLE)
+
+    results = []
+    for setup in crypto_setups[:MAX_SIGNALS_PER_CYCLE]:
+        try:
+            result = analyze_and_log(
+                ticker=setup["ticker"],
+                strategy=setup["strategy"],
+                timeframe=tf,
+            )
+            results.append(result)
+            status = "PASSED" if result["passed"] else f"FILTERED ({result['filter_reason']})"
+            logger.info(
+                "Crypto signal #%d: %s %s %s — %s",
+                result["signal_id"], setup["ticker"], setup["strategy"],
+                result["analysis"]["direction"], status,
+            )
+            time.sleep(1)
+        except Exception as e:
+            logger.error("Crypto analysis failed for %s: %s", setup["ticker"], e)
+
+    logger.info(
+        "Crypto scan complete — %d analyzed, %d passed",
+        len(results), sum(1 for r in results if r["passed"]),
     )
 
     return results

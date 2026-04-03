@@ -3,6 +3,7 @@
 import yfinance as yf
 import pandas as pd
 from src.collectors.market_data import fetch_ohlcv, compute_indicators
+from src.config import CRYPTO_WATCHLIST, CRYPTO_ENABLED
 
 
 # Expanded watchlist — liquid day-trading names
@@ -175,3 +176,27 @@ def screen_momentum(watchlist: list[str] | None = None, timeframe: str = "1d") -
             continue
 
     return sorted(setups, key=lambda x: abs(x["momentum_10d"]), reverse=True)
+
+
+# --- Crypto Screeners ---
+# Same strategies but tuned for 24/7 crypto markets
+
+def screen_crypto(timeframe: str = "15m") -> list[dict]:
+    """Run all three strategies on the crypto watchlist. Returns combined setups."""
+    if not CRYPTO_ENABLED:
+        return []
+
+    all_setups = []
+    all_setups.extend(screen_mean_reversion(watchlist=CRYPTO_WATCHLIST, timeframe=timeframe))
+    all_setups.extend(screen_breakout(watchlist=CRYPTO_WATCHLIST, timeframe=timeframe))
+    all_setups.extend(screen_momentum(watchlist=CRYPTO_WATCHLIST, timeframe=timeframe))
+
+    # Deduplicate by ticker
+    seen = set()
+    unique = []
+    for s in all_setups:
+        if s["ticker"] not in seen:
+            seen.add(s["ticker"])
+            unique.append(s)
+
+    return unique

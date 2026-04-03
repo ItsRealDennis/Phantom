@@ -6,7 +6,10 @@ from datetime import datetime
 
 
 def fetch_ohlcv(ticker: str, timeframe: str = "1d", lookback_days: int = 60) -> pd.DataFrame:
-    """Fetch OHLCV data for a ticker. Returns a DataFrame."""
+    """Fetch OHLCV data for a ticker. Handles crypto symbol conversion."""
+    from src.config import is_crypto, alpaca_to_yfinance
+    # Convert Alpaca crypto format (BTC/USD) to yfinance format (BTC-USD)
+    yf_ticker = alpaca_to_yfinance(ticker) if is_crypto(ticker) else ticker
     period_map = {
         "5m": "5d",
         "15m": "5d",
@@ -25,11 +28,11 @@ def fetch_ohlcv(ticker: str, timeframe: str = "1d", lookback_days: int = 60) -> 
     period = period_map.get(timeframe, "60d")
     interval = interval_map.get(timeframe, "1d")
 
-    tk = yf.Ticker(ticker)
+    tk = yf.Ticker(yf_ticker)
     df = tk.history(period=period, interval=interval)
 
     if df.empty:
-        raise ValueError(f"No data returned for {ticker} at {timeframe}")
+        raise ValueError(f"No data returned for {ticker} ({yf_ticker}) at {timeframe}")
 
     if timeframe == "4h":
         df = df.resample("4h").agg({

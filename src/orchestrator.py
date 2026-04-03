@@ -36,16 +36,29 @@ def analyze_and_log(ticker: str, strategy: str, timeframe: str = "1d") -> dict:
     indicators = market.get("indicators", {})
 
     # Step 2: Collect fundamentals & news
+    from src.config import is_crypto, alpaca_to_yfinance
     is_intraday = timeframe in ("5m", "15m", "1h")
-    try:
-        fund_data = get_fundamentals(ticker)
-        fund_summary = summarize_fundamentals(fund_data, mode="intraday" if is_intraday else "daily")
-        news = get_news_headlines(ticker)
-    except Exception as e:
-        logger.warning("Fundamentals/news fetch failed for %s: %s", ticker, e)
+    crypto = is_crypto(ticker)
+
+    if crypto:
+        # Crypto has no fundamentals — skip to save tokens and avoid errors
         fund_data = {}
-        fund_summary = "Unavailable"
-        news = "Unavailable"
+        fund_summary = "Cryptocurrency — no fundamental data applicable"
+        yf_sym = alpaca_to_yfinance(ticker)
+        try:
+            news = get_news_headlines(yf_sym)
+        except Exception:
+            news = "No crypto news available"
+    else:
+        try:
+            fund_data = get_fundamentals(ticker)
+            fund_summary = summarize_fundamentals(fund_data, mode="intraday" if is_intraday else "daily")
+            news = get_news_headlines(ticker)
+        except Exception as e:
+            logger.warning("Fundamentals/news fetch failed for %s: %s", ticker, e)
+            fund_data = {}
+            fund_summary = "Unavailable"
+            news = "Unavailable"
 
     # Step 3: Send to Claude (with indicators)
     analysis = analyze(

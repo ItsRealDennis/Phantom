@@ -34,16 +34,24 @@ def submit_bracket_order(signal: dict) -> dict:
     ticker = signal["ticker"]
     timeframe = signal.get("timeframe", "15m")
 
+    from src.config import is_crypto
+
     shares = sizing["shares"]
-    if shares <= 0:
+    crypto = is_crypto(ticker)
+
+    # Crypto can use fractional qty; stocks need integer >= 1
+    if not crypto and shares <= 0:
         return {"success": False, "error": f"Invalid share count: {shares}"}
 
     stop_price = round(analysis["stopLoss"], 2)
     tp_price = round(analysis["takeProfit"], 2)
     direction = analysis["direction"]
 
-    # Day trading: use DAY time-in-force for intraday, GTC for daily+
-    tif_str = "day" if timeframe in ("5m", "15m", "1h") else "gtc"
+    # Crypto always uses GTC (trades 24/7). Stocks: DAY for intraday, GTC for daily.
+    if crypto:
+        tif_str = "gtc"
+    else:
+        tif_str = "day" if timeframe in ("5m", "15m", "1h") else "gtc"
 
     try:
         from alpaca.trading.requests import MarketOrderRequest, TakeProfitRequest, StopLossRequest

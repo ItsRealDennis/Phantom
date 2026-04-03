@@ -49,5 +49,29 @@ SCAN_TIMEFRAME = os.environ.get("PHANTOM_TIMEFRAME", "15m")
 TRADE_EXPIRY_DAYS = int(os.environ.get("PHANTOM_EXPIRY_DAYS", "1"))
 MAX_SIGNALS_PER_CYCLE = int(os.environ.get("PHANTOM_MAX_SIGNALS", "8"))
 
+# Crypto settings
+CRYPTO_ENABLED = os.environ.get("PHANTOM_CRYPTO", "true").lower() == "true"
+CRYPTO_WATCHLIST = [
+    # Major pairs (USD)
+    "BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD", "DOGE/USD",
+    "ADA/USD", "DOT/USD", "LINK/USD", "SHIB/USD",
+    "LTC/USD", "BCH/USD", "BONK/USD", "ARB/USD",
+    # Alts
+    "FIL/USD", "CRV/USD", "BAT/USD",
+]
+
+# Symbol mapping: Alpaca uses "BTC/USD", yfinance uses "BTC-USD"
+def alpaca_to_yfinance(symbol: str) -> str:
+    """Convert Alpaca crypto symbol to yfinance format."""
+    return symbol.replace("/", "-")
+
+def yfinance_to_alpaca(symbol: str) -> str:
+    """Convert yfinance crypto symbol to Alpaca format."""
+    return symbol.replace("-", "/")
+
+def is_crypto(symbol: str) -> bool:
+    """Check if a symbol is crypto (contains / or -USD suffix)."""
+    return "/" in symbol or symbol.endswith("-USD")
+
 # Web
 WEB_PORT = int(os.environ.get("PORT", "8000"))
