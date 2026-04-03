@@ -191,9 +191,8 @@
     transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .page-container {
-    max-width: 1320px;
-    margin: 0 auto;
-    padding: 28px 32px 64px;
+    max-width: 100%;
+    padding: 28px 40px 64px;
 }
 
 /* ---- Mobile bottom tab bar ---- */

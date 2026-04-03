@@ -61,7 +61,7 @@
 /* ---- Hero metrics ---- */
 .hero {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 1px;
     background: var(--border);
     border-radius: var(--radius);
@@ -464,7 +464,7 @@ thead th.sort-desc::after { content: ' \\2193'; }
     .grid-4 { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 960px) {
-    .hero { grid-template-columns: 1fr 1fr; }
+    .hero { grid-template-columns: repeat(2, 1fr); }
     .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
     .filter-grid { grid-template-columns: 1fr; }
     .stats-grid { grid-template-columns: 1fr 1fr; }
