@@ -57,6 +57,7 @@ def get_overall_stats() -> dict:
         "total_pnl": round(total_pnl, 2),
         "roi": round(roi, 1),
         "bankroll": round(STARTING_BANKROLL + total_pnl, 2),
+        "starting_bankroll": STARTING_BANKROLL,
     }
 
 

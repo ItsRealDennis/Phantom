@@ -51,7 +51,7 @@ function createEquityChart(ctx, labels, values, height = 280) {
                     borderWidth: 2,
                 },
                 {
-                    data: Array(labels.length).fill(100000),
+                    data: Array(labels.length).fill(10000),
                     borderColor: 'rgba(255,255,255,0.08)',
                     borderDash: [4, 4],
                     borderWidth: 1,

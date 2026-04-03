@@ -93,7 +93,7 @@ async function renderSettings(container) {
             ${portfolio ? `
             <div style="margin-top:16px">
                 <div class="stat-label">Paper Bankroll</div>
-                <div class="stat-value">${formatMoney(portfolio.bankroll || 100000)}</div>
+                <div class="stat-value">${formatMoney(portfolio.bankroll || 10000)}</div>
             </div>
             ` : ''}
         `;
@@ -131,7 +131,7 @@ async function renderSettings(container) {
         { key: 'Max Sector Exposure', value: '30%' },
         { key: 'Max Daily Loss', value: '3%' },
         { key: 'Edge Shrinkage', value: '50%' },
-        { key: 'Starting Bankroll', value: '$100,000' },
+        { key: 'Starting Bankroll', value: '$10,000' },
         { key: 'Strategies', value: 'MR, BO, MOM' },
         { key: 'Timeframes', value: '5m-1d' },
         { key: 'AI Model', value: 'Claude Sonnet 4' },

@@ -49,6 +49,41 @@ def analyze_and_log(ticker: str, strategy: str, timeframe: str = "1d") -> dict:
             "analysis": None, "sizing": None, "order": None,
         }
 
+    # Step 0b: Quick position limit check (save Claude API cost)
+    from src.tracking.trade_logger import count_open_positions, has_open_position
+    if count_open_positions() >= FILTERS["max_open_positions"]:
+        reason = f"At max positions ({FILTERS['max_open_positions']})"
+        signal_id = log_signal(
+            ticker=ticker, strategy=strategy, timeframe=timeframe,
+            direction="N/A", confidence=0, entry_price=0, stop_loss=0,
+            take_profit=0, rr_ratio=0, reasoning="Position limit reached",
+            confluences=[], warnings=[], key_risks="",
+            kelly_pct=None, position_size=None, passed_filter=False,
+            filter_reason=reason,
+        )
+        return {
+            "signal_id": signal_id, "ticker": ticker, "strategy": strategy,
+            "passed": False, "filter_reason": reason,
+            "analysis": None, "sizing": None, "order": None,
+        }
+
+    # Step 0c: Quick duplicate ticker check
+    if has_open_position(ticker):
+        reason = f"Already have open position in {ticker}"
+        signal_id = log_signal(
+            ticker=ticker, strategy=strategy, timeframe=timeframe,
+            direction="N/A", confidence=0, entry_price=0, stop_loss=0,
+            take_profit=0, rr_ratio=0, reasoning="Duplicate position",
+            confluences=[], warnings=[], key_risks="",
+            kelly_pct=None, position_size=None, passed_filter=False,
+            filter_reason=reason,
+        )
+        return {
+            "signal_id": signal_id, "ticker": ticker, "strategy": strategy,
+            "passed": False, "filter_reason": reason,
+            "analysis": None, "sizing": None, "order": None,
+        }
+
     # Step 1: Collect market data
     market = collect_market_data(ticker, timeframe)
 
