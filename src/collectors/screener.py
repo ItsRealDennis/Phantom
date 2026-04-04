@@ -69,28 +69,54 @@ def screen_mean_reversion(watchlist: list[str] | None = None, timeframe: str = "
 
 
 def screen_breakout(watchlist: list[str] | None = None, timeframe: str = "1d") -> list[dict]:
-    """Find breakouts: actual price break + volume surge + MACD confirmation."""
+    """Find breakouts: price break + volume surge + MACD + BB squeeze + ATR expansion."""
     tickers = watchlist or DEFAULT_WATCHLIST
     setups = []
 
     for ticker in tickers:
         try:
             df = fetch_ohlcv(ticker, timeframe)
-            if len(df) < 20:
+            if len(df) < 21:
                 continue
 
             close = df["Close"].iloc[-1]
-            high_20 = df["High"].tail(20).max()
-            low_20 = df["Low"].tail(20).min()
-            avg_vol = df["Volume"].tail(20).mean()
-            recent_vol = df["Volume"].tail(3).mean()
-            vol_ratio = recent_vol / avg_vol if avg_vol > 0 else 1
+
+            # Exclude current bar from breakout level — avoids chasing
+            high_20 = df["High"].iloc[-21:-1].max()
+            low_20 = df["Low"].iloc[-21:-1].min()
+
+            # Use the actual breakout bar's volume, not a 3-bar average
+            breakout_vol = df["Volume"].iloc[-1]
+            avg_vol = df["Volume"].iloc[-21:-1].mean()
+            vol_ratio = breakout_vol / avg_vol if avg_vol > 0 else 1
 
             indicators = compute_indicators(df, timeframe)
             macd_hist = indicators["macd_histogram"]
 
-            # LONG breakout: close above 20-bar high + volume + MACD positive
-            if close > high_20 and vol_ratio > 1.3 and macd_hist > 0:
+            # Bollinger Bandwidth squeeze check: bandwidth must be below its 20-bar median
+            bb_upper = indicators.get("bb_upper")
+            bb_lower = indicators.get("bb_lower")
+            bb_squeeze = False
+            if bb_upper and bb_lower:
+                sma20 = df["Close"].rolling(20).mean()
+                std20 = df["Close"].rolling(20).std()
+                bw_series = (2 * 2 * std20 / sma20)  # bandwidth as % of SMA
+                if len(bw_series.dropna()) >= 20:
+                    bw_now = float(bw_series.iloc[-1])
+                    bw_median = float(bw_series.dropna().tail(20).median())
+                    bb_squeeze = bw_now <= bw_median
+
+            # ATR expansion: current ATR > ATR from 5 bars ago
+            atr_series = df["High"] - df["Low"]  # simplified TR for comparison
+            atr_expanding = False
+            if len(atr_series) >= 6:
+                atr_now = float(atr_series.tail(3).mean())
+                atr_prev = float(atr_series.iloc[-6:-3].mean())
+                atr_expanding = atr_now > atr_prev
+
+            # LONG breakout: close above prior 20-bar high + volume 1.5x + MACD + squeeze or ATR
+            if (close > high_20 and vol_ratio > 1.5 and macd_hist > 0
+                    and (bb_squeeze or atr_expanding)):
                 setups.append({
                     "ticker": ticker,
                     "strategy": "breakout",
@@ -99,10 +125,13 @@ def screen_breakout(watchlist: list[str] | None = None, timeframe: str = "1d") -
                     "level": round(float(high_20), 2),
                     "vol_ratio": round(vol_ratio, 2),
                     "macd_hist": round(macd_hist, 3),
+                    "bb_squeeze": bb_squeeze,
+                    "atr_expanding": atr_expanding,
                 })
 
-            # SHORT breakout: close below 20-bar low + volume + MACD negative
-            if close < low_20 and vol_ratio > 1.3 and macd_hist < 0:
+            # SHORT breakout: close below prior 20-bar low + volume 1.5x + MACD + squeeze or ATR
+            if (close < low_20 and vol_ratio > 1.5 and macd_hist < 0
+                    and (bb_squeeze or atr_expanding)):
                 setups.append({
                     "ticker": ticker,
                     "strategy": "breakout",
@@ -111,6 +140,8 @@ def screen_breakout(watchlist: list[str] | None = None, timeframe: str = "1d") -
                     "level": round(float(low_20), 2),
                     "vol_ratio": round(vol_ratio, 2),
                     "macd_hist": round(macd_hist, 3),
+                    "bb_squeeze": bb_squeeze,
+                    "atr_expanding": atr_expanding,
                 })
         except Exception:
             continue
