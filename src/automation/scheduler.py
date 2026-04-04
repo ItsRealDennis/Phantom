@@ -11,7 +11,7 @@ from src.execution.order_sync import sync_alpaca_orders, sync_all_open_trades
 from src.execution.alpaca_client import is_alpaca_enabled
 from src.tracking.filter_validation import settle_filtered_signals
 from src.tracking.analytics import record_daily_snapshot
-from src.config import CRYPTO_ENABLED
+from src.config import CRYPTO_ENABLED, POLYMARKET_ENABLED
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +100,29 @@ def start_scheduler():
             CronTrigger(hour=0, minute=5),
             id="daily_snapshot_crypto",
             name="Crypto daily snapshot",
+            max_instances=1,
+            replace_existing=True,
+        )
+
+    # Polymarket scan: every 30 min, 24/7 (prediction markets never sleep)
+    if POLYMARKET_ENABLED:
+        from src.polymarket_orchestrator import run_polymarket_cycle
+        from src.automation.polymarket_settler import settle_polymarket_trades
+
+        scheduler.add_job(
+            run_polymarket_cycle,
+            CronTrigger(minute="10,40"),  # Offset from stock/crypto scans
+            id="polymarket_scan",
+            name="Polymarket scan + analyze",
+            max_instances=1,
+            replace_existing=True,
+        )
+
+        scheduler.add_job(
+            settle_polymarket_trades,
+            CronTrigger(minute="*/10"),
+            id="polymarket_settle",
+            name="Polymarket trade settlement",
             max_instances=1,
             replace_existing=True,
         )

@@ -312,6 +312,45 @@ def alpaca_cancel_all():
         return JSONResponse(status_code=400, content={"error": str(e)})
 
 
+# --- Polymarket ---
+
+@router.post("/api/polymarket/scan")
+def polymarket_scan_now():
+    """Trigger a Polymarket scan cycle."""
+    from src.config import POLYMARKET_ENABLED
+    if not POLYMARKET_ENABLED:
+        return JSONResponse(status_code=503, content={"error": "Polymarket not enabled"})
+
+    def _run():
+        from src.polymarket_orchestrator import run_polymarket_cycle
+        run_polymarket_cycle()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return {"status": "polymarket_scan_started"}
+
+
+@router.get("/api/polymarket/markets")
+def polymarket_markets(limit: int = Query(20, ge=1, le=100)):
+    """Get active Polymarket markets."""
+    from src.collectors.polymarket_data import list_markets
+    markets = list_markets(limit=limit, active=True)
+    return markets
+
+
+@router.get("/api/polymarket/signals")
+def polymarket_signals(limit: int = Query(50, ge=1, le=200)):
+    """Get Polymarket signals (PM: prefixed tickers)."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT * FROM signals WHERE ticker LIKE 'PM:%'
+        ORDER BY created_at DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 @router.post("/api/trades/expire-all")
 def expire_all_open():
     """Force-expire all open trades. Use to reset for a fresh start."""

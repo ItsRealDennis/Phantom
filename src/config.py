@@ -19,6 +19,14 @@ ALPACA_API_KEY = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "")
 ALPHA_VANTAGE_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "")
 
+# Polymarket
+POLYMARKET_PRIVATE_KEY = os.environ.get("POLYMARKET_PRIVATE_KEY", "")
+POLYMARKET_FUNDER = os.environ.get("POLYMARKET_FUNDER", "")  # Wallet address
+POLYMARKET_ENABLED = os.environ.get("PHANTOM_POLYMARKET", "false").lower() == "true"
+POLYMARKET_HOST = "https://clob.polymarket.com"
+POLYMARKET_GAMMA_HOST = "https://gamma-api.polymarket.com"
+POLYMARKET_CHAIN_ID = 137  # Polygon
+
 # Claude model for analysis
 CLAUDE_MODEL = "claude-sonnet-4-20250514"
 
@@ -51,6 +59,24 @@ MAX_SIGNALS_PER_CYCLE = int(os.environ.get("PHANTOM_MAX_SIGNALS", "8"))
 
 # Crypto settings
 CRYPTO_ENABLED = os.environ.get("PHANTOM_CRYPTO", "true").lower() == "true"
+# Polymarket settings
+POLYMARKET_FILTERS = {
+    "min_confidence": 60,           # Higher bar — prediction markets are efficient
+    "min_edge": 0.05,               # 5% minimum edge (our prob vs market price)
+    "max_open_positions": 5,
+    "max_position_pct": 0.02,       # 2% max bankroll risk per market
+    "max_daily_loss_pct": 0.03,
+    "min_volume": 1000,             # Min $1K total volume on market
+    "min_liquidity": 500,           # Min $500 on best bid/ask
+    "edge_shrinkage": 0.50,
+}
+POLYMARKET_STRATEGIES = ["mispricing", "event_catalyst", "momentum"]
+POLYMARKET_SCAN_INTERVAL_MIN = 30   # Scan every 30 min
+POLYMARKET_MAX_SIGNALS = int(os.environ.get("PHANTOM_PM_MAX_SIGNALS", "6"))
+POLYMARKET_CATEGORIES = [
+    "politics", "crypto", "sports", "economics", "tech", "science", "culture",
+]
+
 CRYPTO_WATCHLIST = [
     # Major pairs (USD)
     "BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD", "DOGE/USD",
@@ -116,6 +142,10 @@ STRATEGY_MAX_HOLD = {
     "breakout": 48,
     "momentum": 72,
     "earnings_play": 24,
+    # Polymarket strategies — hold until resolution or max hold
+    "mispricing": 168,        # 7 days
+    "event_catalyst": 72,     # 3 days
+    "pm_momentum": 48,        # 2 days (prediction market momentum)
 }
 
 # --- Phase 2: Filter Validation ---
